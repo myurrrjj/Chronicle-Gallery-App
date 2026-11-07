@@ -1,5 +1,7 @@
 package com.myurrrjj.chronicle.domain.model
 
+import kotlin.math.roundToInt
+
 enum class FaceIndexingStatus {
     IDLE, QUEUED, RUNNING, PAUSING, PAUSED, COMPLETED, FAILED
 }
@@ -43,9 +45,8 @@ data class FaceIndexingProgress(
 ) {
     val fraction: Float
         get() = if (total <= 0) 0f else (processed.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-
     val percentage: Float
-        get() = (fraction * 100f)
+        get() = ((fraction * 100f) * 100f).roundToInt() / 100f
 
     val pending: Int
         get() = (total - processed).coerceAtLeast(0)

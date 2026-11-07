@@ -26,7 +26,7 @@ class MlKitFaceDetector @Inject constructor() {
             FaceDetectorOptions.LANDMARK_MODE_ALL
         ).setClassificationMode(
             FaceDetectorOptions.CLASSIFICATION_MODE_ALL
-        ).setMinFaceSize(0.03f).build()
+        ).setMinFaceSize(0.05f).build()
 
         FaceDetection.getClient(options)
     }
@@ -118,7 +118,7 @@ class MlKitFaceDetector @Inject constructor() {
         }
 
 
-        if (width < 40 || height < 40) {
+        if (width < 112 || height < 112) {
 
             reasons += "face too small: ${width}x$height"
         }

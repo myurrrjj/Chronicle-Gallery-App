@@ -113,6 +113,7 @@ import kotlinx.coroutines.delay
 
 
 import android.app.Activity
+import androidx.compose.foundation.layout.heightIn
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -217,7 +218,7 @@ fun DetailScreen(
             key = { page -> contentState.displayedMediaList[page].id }) { page ->
 
             val media = contentState.displayedMediaList[page]
-            val imageRequest = ImageRequest.Builder(context).data(media.uriString)
+            val imageRequest = ImageRequest.Builder(context).crossfade(true).data(media.uriString)
                 .placeholderMemoryCacheKey(media.uriString).build()
             val isCurrentPage = pagerState.currentPage == page
             val isTransitionRunning = animatedVisibilityScope.transition.isRunning
@@ -307,6 +308,7 @@ fun DetailScreen(
                         )
                         if (!isTransitionRunning) {
                             ZoomableImage(
+                                onNavigateBack = onNavigateBack,
                                 uriString = media.uriString,
                                 contentDescription = media.name,
                                 onTap = { offset ->
@@ -872,7 +874,7 @@ private fun OptionPill(
         } else {
             MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
         },
-        modifier = Modifier.height(34.dp)
+        modifier = Modifier.heightIn(min = 34.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),

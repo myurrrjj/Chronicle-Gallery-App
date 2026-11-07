@@ -14,6 +14,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.AllInbox
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Window
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -22,8 +32,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.core.R
 import com.myurrrjj.chronicle.domain.model.MediaAsset
 import com.myurrrjj.chronicle.presentation.gallery.components.DetailAction
 import com.myurrrjj.chronicle.presentation.gallery.components.DetailFloatingBar
@@ -33,13 +45,12 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.coroutines.Job
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SharedTransitionScope.GalleryBottomBar(
     selectionMode: Boolean,
     isMainGallery: Boolean,
     hasContent: Boolean,
-    isScrollingUp:State<Boolean>,
+    isScrollingUp: State<Boolean>,
     selectedMediaIds: ImmutableSet<Long>,
     masterMediaList: ImmutableList<MediaAsset>,
     selectedTab: GalleryTab,
@@ -59,6 +70,8 @@ fun SharedTransitionScope.GalleryBottomBar(
     val barAlpha by animateFloatAsState(
         targetValue = if (bottomBarVisible) 1f else 0f, label = "barAlpha"
     )
+    val fontScale = LocalDensity.current.fontScale
+
 
     Box(
         contentAlignment = Alignment.BottomCenter,
@@ -67,8 +80,12 @@ fun SharedTransitionScope.GalleryBottomBar(
             .renderInSharedTransitionScopeOverlay(2f)
 
             .padding(
-                bottom = WindowInsets.systemBars.asPaddingValues()
-                    .calculateBottomPadding() + 24.dp
+                bottom = if (fontScale < 1.5f) {
+                    WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                }
+                else{
+                    WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+                }
             )
             .graphicsLayer {
                 translationY = barOffset.toPx()
@@ -93,17 +110,41 @@ fun SharedTransitionScope.GalleryBottomBar(
                     )
                 )
             } else if (isMainGallery) {
-                FloatingGalleryBar(
-                    selectedTab = selectedTab,
-                    onClick = onTabClick,
-                    onTabSelected = onTabSelected,
-                    modifier = Modifier.sharedBounds(
-                        sharedContentState = rememberSharedContentState(key = "floating_navigation_bar"),
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        zIndexInOverlay = 1f
+
+                if (fontScale > 1.5f) {
+                    NavigationBar {
+                        GalleryTab.entries.forEach { tab ->
+
+                            NavigationBarItem(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                selected = selectedTab == tab,
+                                onClick = { onTabSelected(tab) },
+                                icon = {
+                                    when(tab.title){
+                                        "All" -> Icon(Icons.Rounded.AllInbox, contentDescription = null)
+                                        "Albums" -> Icon(Icons.Rounded.Window, contentDescription = null)
+                                            "Videos"->Icon(Icons.Rounded.Videocam, contentDescription = null)
+                                                "Others" ->Icon(Icons.Rounded.Favorite, contentDescription = null)
+                                    }
+                                },
+                                label = { Text(tab.title, maxLines = 1) }
+                            )
+                        }
+                    }
+                } else {
+
+                    FloatingGalleryBar(
+                        selectedTab = selectedTab,
+                        onClick = onTabClick,
+                        onTabSelected = onTabSelected,
+                        modifier = Modifier.sharedBounds(
+                            sharedContentState = rememberSharedContentState(key = "floating_navigation_bar"),
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                            zIndexInOverlay = 1f
+                        )
                     )
-                )
+                }
             } else {
                 Spacer(modifier = Modifier.height(1.dp))
             }

@@ -14,7 +14,7 @@ import kotlin.math.sqrt
 class FaceClusterer @Inject constructor(private val faceDao: FaceDao) {
 
     companion object {
-        private const val MATCH_THRESHOLD = 0.363f
+        private const val MATCH_THRESHOLD = 0.4f
     }
 
     suspend fun clusterEmbeddings(

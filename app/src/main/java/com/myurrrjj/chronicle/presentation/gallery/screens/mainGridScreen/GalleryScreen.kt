@@ -186,10 +186,10 @@ fun GalleryScreen(
                     },
                     onTabSelected = { tab ->
                         viewModel.setEvent(GalleryEvent.OnTabSelected(tab))
-                        coroutineScope.launch {
-                            delay(100)
-                            gridState.animateScrollToItem(0)
-                        }
+//                        coroutineScope.launch {
+//                            delay(100)
+////                            gridState.animateScrollToItem(0)
+//                        }
                     }
                 )
             }
