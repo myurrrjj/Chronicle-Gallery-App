@@ -5,11 +5,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Icon
@@ -31,54 +37,64 @@ fun EmptyStateView(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+
+    val bottomBarPadding = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()+96.dp
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(start=24.dp,end=24.dp,top = 24.dp, bottom = bottomBarPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .size(120.dp)
-                .clip(RoundedCornerShape(32.dp))
+                .size(88.dp)
+                .clip(RoundedCornerShape(28.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Rounded.Lock,
                 contentDescription = null,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(40.dp),
                 tint = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(20.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 420.dp)
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
             text = description,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 420.dp)
         )
         Spacer(Modifier.height(48.dp))
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(100))
-                .background(MaterialTheme.colorScheme.primary)
-                .bouncyClick(onClick = onClick)
-                .padding(horizontal = 32.dp, vertical = 16.dp)
-        ) {
-            Text(
-                text = buttonText,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
+        if (buttonText.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+                    .bouncyClick(onClick = onClick)
+                    .padding(horizontal = 28.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = buttonText,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }

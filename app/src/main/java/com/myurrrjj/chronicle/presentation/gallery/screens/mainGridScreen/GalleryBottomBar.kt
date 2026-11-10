@@ -2,7 +2,6 @@ package com.myurrrjj.chronicle.presentation.gallery.screens.mainGridScreen
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentScope
-import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AllInbox
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Videocam
@@ -24,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -35,7 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.core.R
+import androidx.window.core.layout.WindowSizeClass
 import com.myurrrjj.chronicle.domain.model.MediaAsset
 import com.myurrrjj.chronicle.presentation.gallery.components.DetailAction
 import com.myurrrjj.chronicle.presentation.gallery.components.DetailFloatingBar
@@ -72,20 +71,20 @@ fun SharedTransitionScope.GalleryBottomBar(
     )
     val fontScale = LocalDensity.current.fontScale
 
+    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+    val switchToVertical  = !selectionMode && (!windowSizeClass.isHeightAtLeastBreakpoint(
+        WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND) || windowSizeClass.isWidthAtLeastBreakpoint(
+        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND))
 
     Box(
-        contentAlignment = Alignment.BottomCenter,
-        modifier = Modifier
+        contentAlignment = if (switchToVertical) Alignment.CenterStart else Alignment.BottomCenter,        modifier = Modifier
             .fillMaxSize()
             .renderInSharedTransitionScopeOverlay(2f)
 
             .padding(
-                bottom = if (fontScale < 1.5f) {
-                    WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 24.dp
-                }
-                else{
-                    WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
-                }
+                bottom = WindowInsets.systemBars
+                    .asPaddingValues()
+                    .calculateBottomPadding() + if (switchToVertical) 0.dp else 16.dp
             )
             .graphicsLayer {
                 translationY = barOffset.toPx()
@@ -143,6 +142,7 @@ fun SharedTransitionScope.GalleryBottomBar(
                             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
                             zIndexInOverlay = 1f
                         )
+                        , isVerticalRail = switchToVertical
                     )
                 }
             } else {

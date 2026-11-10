@@ -6,17 +6,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -57,88 +63,109 @@ fun FaceIndexingStartSheet(
         mutableStateOf(initialOptions.pauseOnLowStorage)
     }
 
+    val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-
+                .widthIn(max = 640.dp)
+                .align(Alignment.CenterHorizontally)
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
+                .padding(bottom = navBarBottomPadding + 16.dp)
         ) {
-            Text(
-                text = if (progress.canResume) "Resume indexing" else "Find people in your photos",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Chronicle looks for faces and groups them by person. " + "Everything happens on this device — no photo ever leaves your phone.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (progress.total > 0) {
-                Spacer(modifier = Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
-                    text = if (progress.pending > 0) {
-                        "${progress.pending} of ${progress.total} photos still to scan."
-                    } else {
-                        "All ${progress.total} photos are already indexed."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    text = if (progress.canResume) "Resume indexing" else "Find people in your photos",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "When should this run?",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            FaceIndexingSchedule.entries.forEach { option ->
-                ScheduleOptionRow(
-                    option = option, selected = schedule == option, onClick = { schedule = option })
                 Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Chronicle looks for faces and groups them by person. " +
+                            "Everything happens on this device.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (progress.total > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (progress.pending > 0) {
+                            "${progress.pending} of ${progress.total} photos still to scan."
+                        } else {
+                            "All ${progress.total} photos are already indexed."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "When should this run?",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                FaceIndexingSchedule.entries.forEach { option ->
+                    ScheduleOptionRow(
+                        option = option,
+                        selected = schedule == option,
+                        onClick = { schedule = option }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Pause automatically",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OptionSwitchRow(
+                    title = "When the battery is low",
+                    subtitle = "Stops scanning below 15% and resumes when you charge.",
+                    checked = pauseOnLowBattery,
+                    onCheckedChange = { pauseOnLowBattery = it }
+                )
+                OptionSwitchRow(
+                    title = "When storage is low",
+                    subtitle = "Stops scanning if the device is short on space.",
+                    checked = pauseOnLowStorage,
+                    onCheckedChange = { pauseOnLowStorage = it }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Pause automatically",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OptionSwitchRow(
-                title = "When the battery is low",
-                subtitle = "Stops scanning below 15% and resumes when you charge.",
-                checked = pauseOnLowBattery,
-                onCheckedChange = { pauseOnLowBattery = it })
-
-            OptionSwitchRow(
-                title = "When storage is low",
-                subtitle = "Stops scanning if the device is short on space.",
-                checked = pauseOnLowStorage,
-                onCheckedChange = { pauseOnLowStorage = it })
-
-            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = {
@@ -149,7 +176,11 @@ fun FaceIndexingStartSheet(
                             pauseOnLowStorage = pauseOnLowStorage
                         )
                     )
-                }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Text(
                     text = if (progress.canResume) "Resume indexing" else "Start indexing",
@@ -157,8 +188,13 @@ fun FaceIndexingStartSheet(
                 )
             }
 
+            Spacer(modifier = Modifier.height(4.dp))
+
             TextButton(
-                onClick = onDismiss, modifier = Modifier.fillMaxWidth()
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp)
             ) {
                 Text("Not now")
             }
@@ -247,6 +283,7 @@ private fun OptionSwitchRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Spacer(Modifier.width(16.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

@@ -172,18 +172,18 @@ fun FaceIndexingProgressCard(
                 horizontalArrangement = Arrangement.End,
                 verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 if (progress.canPause) {
-                    TextButton(onClick = onPause) { Text("Pause") }
+                    TextButton(onClick = onPause) { Text("Pause",maxLines= 1,overflow = TextOverflow.Ellipsis) }
                 }
                 if (progress.canResume) {
-                    TextButton(onClick = onResume) { Text("Resume") }
+                    TextButton(onClick = onResume) { Text("Resume",maxLines= 1,overflow = TextOverflow.Ellipsis) }
                 }
                 if (progress.isBusy) {
                     TextButton(onClick = { showStopDialog = true }) {
-                        Text("Stop now", color = MaterialTheme.colorScheme.error)
+                        Text("Stop now",maxLines= 1,overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.error)
                     }
                 }
                 TextButton(onClick = { showResetDialog = true }) {
-                    Text("Reset", color = MaterialTheme.colorScheme.error)
+                    Text("Reset", color = MaterialTheme.colorScheme.error,maxLines= 1,overflow = TextOverflow.Ellipsis)
                 }
             }
         }

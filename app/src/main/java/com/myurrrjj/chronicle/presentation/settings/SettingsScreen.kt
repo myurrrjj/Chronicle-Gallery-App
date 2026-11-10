@@ -6,9 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.rounded.Face
 import com.myurrrjj.chronicle.domain.model.FaceIndexingOptions
 import com.myurrrjj.chronicle.domain.model.FaceIndexingSchedule
@@ -50,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -323,10 +326,15 @@ private fun SettingsToggleCard(item: SettingItem.Toggle) {
 
 @Composable
 private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
-    val useTwoRows = item.options.size > 3
+    val fontScale = LocalDensity.current.fontScale
+    val longLabel = remember(item.options) {
+        item.options.any { item.optionLabel(it).length>10}
+    }
 
+    val useMultipleRows = item.options.size > 3 ||
+            (item.options.size == 3 && (fontScale > 1.15f || longLabel))
     Surface(
-        shape =  RoundedCornerShape(24.dp) ,
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -370,7 +378,7 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
             Spacer(modifier = Modifier.height(20.dp))
 
             Surface(
-                shape = if (useTwoRows) RoundedCornerShape(24.dp) else CircleShape,
+                shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -378,21 +386,19 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
                     modifier = Modifier.padding(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    val chunkSize = if (useMultipleRows) 2 else item.options.size.coerceAtLeast(1)
                     item.options
-                        .chunked(
-                            if (useTwoRows) 2
-                            else item.options.size.coerceAtLeast(1)
-                        )
+                        .chunked(chunkSize)
                         .forEach { rowOptions ->
-
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Min),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 rowOptions.forEach { option ->
-                                    val isSelected =
-                                        item.selectedOption == option
+                                    val isSelected = item.selectedOption == option
 
                                     val containerColor by animateColorAsState(
                                         targetValue = if (isSelected)
@@ -413,14 +419,15 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .heightIn(min = 68.dp)
-                                            .clip(CircleShape)
+                                            .fillMaxHeight() // <-- Matches IntrinsicSize.Min of the Row
+                                            .heightIn(min = 56.dp)
+                                            .clip(RoundedCornerShape(16.dp)) // <-- Never distorts into an egg shape!
                                             .background(containerColor)
                                             .bouncyClick {
                                                 item.onOptionSelected(option)
                                             }
                                             .padding(
-                                                horizontal = 8.dp,
+                                                horizontal = 10.dp,
                                                 vertical = 12.dp
                                             ),
                                         contentAlignment = Alignment.Center
@@ -435,7 +442,7 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
                                     }
                                 }
 
-                                if (useTwoRows && rowOptions.size == 1) {
+                                if (useMultipleRows && rowOptions.size == 1) {
                                     Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
