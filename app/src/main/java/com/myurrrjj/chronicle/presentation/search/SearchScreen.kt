@@ -234,7 +234,7 @@ private fun ActiveSearchContent(
                     onViewModeChanged = { onEvent(SearchEvent.ChangeViewMode(it)) },
                     sharedTransitionScope = sharedTransitionScope,
                     tabAnimatedVisibilityScope = animatedVisibilityScope,
-                    albumAnimatedVisibilityScope = animatedVisibilityScope
+                    albumAnimatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }

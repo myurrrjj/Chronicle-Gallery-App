@@ -15,12 +15,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -36,8 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.myurrrjj.chronicle.core.presentation.components.bouncyClick
+import com.myurrrjj.chronicle.core.presentation.indexing.FaceIndexingProgressCard
 import com.myurrrjj.chronicle.presentation.gallery.components.AlbumCard
 import com.myurrrjj.chronicle.presentation.gallery.components.EmptyStateView
 import com.myurrrjj.chronicle.presentation.gallery.components.PersonClusterCard
@@ -46,7 +45,6 @@ import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryState
 import com.myurrrjj.chronicle.presentation.gallery.model.GalleryTab
 import com.myurrrjj.chronicle.presentation.gallery.model.OthersSelection
-import com.myurrrjj.chronicle.presentation.indexing.FaceIndexingProgressCard
 
 @Composable
 fun SharedTransitionScope.GalleryGridContent(
@@ -55,7 +53,9 @@ fun SharedTransitionScope.GalleryGridContent(
     onRequestPermission: () -> Unit,
     onEvent: (GalleryEvent) -> Unit,
     galleryToDetailScope: AnimatedContentScope,
-    animatedVisibilityScope: AnimatedContentScope
+    animatedVisibilityScope: AnimatedContentScope,
+    contentBottomPadding: Dp = 0.dp,
+    contentStartPadding: Dp = 0.dp
 ) {
     val contentState = (state).contentState
     val configState = (state).configState
@@ -88,7 +88,8 @@ fun SharedTransitionScope.GalleryGridContent(
                         title = "Access Required",
                         description = "To display your beautiful memories, we need access to your device's photos and videos.",
                         buttonText = "Grant Permission",
-                        onClick = onRequestPermission
+                        onClick = onRequestPermission,
+                        contentBottomPadding = contentBottomPadding
                     )
                 }
 
@@ -97,7 +98,9 @@ fun SharedTransitionScope.GalleryGridContent(
                         title = "No Content Found",
                         description = "Your gallery section is empty. Take some photos to get started!",
                         buttonText = "Refresh",
-                        onClick = { onEvent(GalleryEvent.LoadMedia) })
+                        onClick = { onEvent(GalleryEvent.LoadMedia) },
+                        contentBottomPadding = contentBottomPadding
+                    )
                 }
 
                 else -> {
@@ -201,7 +204,8 @@ fun SharedTransitionScope.GalleryGridContent(
                                         onEvent(GalleryEvent.LoadMedia)
                                     }
                                 },
-                                modifier = Modifier.padding(top = 64.dp)
+                                modifier = Modifier.padding(top = 64.dp),
+                                contentBottomPadding = contentBottomPadding
                             )
                         } else {
                             when {
@@ -210,9 +214,10 @@ fun SharedTransitionScope.GalleryGridContent(
                                         state = gridState,
                                         columns = GridCells.Adaptive(minSize = 150.dp),
                                         contentPadding = PaddingValues(
-                                            top = 8.dp, start = 2.dp, end = 2.dp,
-                                            bottom = WindowInsets.systemBars.asPaddingValues()
-                                                .calculateBottomPadding() + 100.dp
+                                            top = 8.dp,
+                                            start = 2.dp + contentStartPadding,
+                                            end = 2.dp,
+                                            bottom = contentBottomPadding
                                         ),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -246,9 +251,10 @@ fun SharedTransitionScope.GalleryGridContent(
                                         state = gridState,
                                         columns = GridCells.Adaptive(minSize = 140.dp),
                                         contentPadding = PaddingValues(
-                                            top = 8.dp, start = 2.dp, end = 2.dp,
-                                            bottom = WindowInsets.systemBars.asPaddingValues()
-                                                .calculateBottomPadding() + 100.dp
+                                            top = 8.dp,
+                                            start = 2.dp + contentStartPadding,
+                                            end = 2.dp,
+                                            bottom = contentBottomPadding
                                         ),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -293,7 +299,9 @@ fun SharedTransitionScope.GalleryGridContent(
                                         sharedTransitionScope = this@GalleryGridContent,
                                         tabAnimatedVisibilityScope = animatedVisibilityScope,
                                         albumAnimatedVisibilityScope = galleryToDetailScope,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.weight(1f),
+                                        contentBottomPadding = contentBottomPadding,
+                                        contentStartPadding = contentStartPadding
                                     )
                                 }
                             }

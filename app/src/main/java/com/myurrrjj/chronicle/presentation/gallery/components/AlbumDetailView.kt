@@ -97,7 +97,7 @@ fun SharedTransitionScope.AlbumDetailView(
             sharedTransitionScope = this@AlbumDetailView,
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             albumAnimatedVisibilityScope = albumAnimatedVisibilityScope,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
     }
 }

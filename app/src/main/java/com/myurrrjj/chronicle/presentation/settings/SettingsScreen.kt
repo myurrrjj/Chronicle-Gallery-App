@@ -12,9 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.rounded.Face
-import com.myurrrjj.chronicle.domain.model.FaceIndexingOptions
 import com.myurrrjj.chronicle.domain.model.FaceIndexingSchedule
-import com.myurrrjj.chronicle.presentation.indexing.FaceIndexingProgressCard
+import com.myurrrjj.chronicle.core.presentation.indexing.FaceIndexingProgressCard
 //import com.myurrrjj.chronicle.presentation.indexing.FaceIndexingStartSheet
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth

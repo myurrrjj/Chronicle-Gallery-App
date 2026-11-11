@@ -141,7 +141,7 @@ fun SharedTransitionScope.PersonDetailView(
             sharedTransitionScope = this@PersonDetailView,
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             albumAnimatedVisibilityScope = personAnimatedVisibilityScope,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
     }
 }

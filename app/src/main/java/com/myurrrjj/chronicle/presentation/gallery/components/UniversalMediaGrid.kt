@@ -4,11 +4,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -18,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
@@ -39,15 +37,17 @@ fun UniversalMediaGrid(
     sharedTransitionScope: SharedTransitionScope,
     tabAnimatedVisibilityScope: AnimatedVisibilityScope,
     albumAnimatedVisibilityScope: AnimatedVisibilityScope,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentBottomPadding: Dp = 0.dp,
+    contentStartPadding: Dp = 0.dp
 ) {
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = currentViewMode.minCellSizeDp.dp),
         contentPadding = PaddingValues(
             top = 8.dp,
-            start = 2.dp,
-            bottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 100.dp,
+            start = 2.dp + contentStartPadding,
+            bottom = contentBottomPadding,
             end = 2.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(2.dp),

@@ -1,4 +1,4 @@
-package com.myurrrjj.chronicle.presentation.indexing
+package com.myurrrjj.chronicle.core.presentation.indexing
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

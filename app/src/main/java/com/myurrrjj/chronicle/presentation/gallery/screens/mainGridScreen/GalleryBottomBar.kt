@@ -7,22 +7,9 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AllInbox
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.Videocam
-import androidx.compose.material.icons.rounded.Window
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -31,15 +18,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.window.core.layout.WindowSizeClass
 import com.myurrrjj.chronicle.domain.model.MediaAsset
 import com.myurrrjj.chronicle.presentation.gallery.components.DetailAction
 import com.myurrrjj.chronicle.presentation.gallery.components.DetailFloatingBar
 import com.myurrrjj.chronicle.presentation.gallery.components.FloatingGalleryBar
 import com.myurrrjj.chronicle.presentation.gallery.model.GalleryTab
+import com.myurrrjj.chronicle.presentation.navigation.WindowLayout
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.coroutines.Job
@@ -53,10 +41,13 @@ fun SharedTransitionScope.GalleryBottomBar(
     selectedMediaIds: ImmutableSet<Long>,
     masterMediaList: ImmutableList<MediaAsset>,
     selectedTab: GalleryTab,
+    layout: WindowLayout,
     animatedVisibilityScope: AnimatedContentScope,
     onActionClick: (DetailAction, List<MediaAsset>) -> Unit,
     onTabClick: () -> Job,
-    onTabSelected: (GalleryTab) -> Unit
+    onTabSelected: (GalleryTab) -> Unit,
+    onBarSizeChanged: (IntSize) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val shouldShowBar by remember(hasContent) {
         derivedStateOf { !hasContent || isScrollingUp.value }
@@ -69,84 +60,56 @@ fun SharedTransitionScope.GalleryBottomBar(
     val barAlpha by animateFloatAsState(
         targetValue = if (bottomBarVisible) 1f else 0f, label = "barAlpha"
     )
-    val fontScale = LocalDensity.current.fontScale
-
-    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
-    val switchToVertical  = !selectionMode && (!windowSizeClass.isHeightAtLeastBreakpoint(
-        WindowSizeClass.HEIGHT_DP_MEDIUM_LOWER_BOUND) || windowSizeClass.isWidthAtLeastBreakpoint(
-        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND))
 
     Box(
-        contentAlignment = if (switchToVertical) Alignment.CenterStart else Alignment.BottomCenter,        modifier = Modifier
+        contentAlignment = if (layout.useNavigationRail) Alignment.CenterStart else Alignment.BottomCenter,
+        modifier = modifier
             .fillMaxSize()
             .renderInSharedTransitionScopeOverlay(2f)
-
-            .padding(
-                bottom = WindowInsets.systemBars
-                    .asPaddingValues()
-                    .calculateBottomPadding() + if (switchToVertical) 0.dp else 16.dp
-            )
+            .then(if (layout.useNavigationRail) Modifier else Modifier.navigationBarsPadding())
             .graphicsLayer {
                 translationY = barOffset.toPx()
                 alpha = barAlpha
             }
-            .zIndex(1f)) {
+            .zIndex(1f)
+    ) {
         AnimatedContent(
-            targetState = selectionMode, label = "BottomBarSwap"
-        ) { isSelectionMode ->
+            targetState = selectionMode to layout.useNavigationRail, label = "BottomBarSwap"
+        ) { (isSelectionMode, isRail) ->
             if (isSelectionMode) {
                 val selectedMedia = masterMediaList.filter { it.id in selectedMediaIds }
                 DetailFloatingBar(
-                    isFavorite = false, onActionClick = { action ->
+                    isFavorite = false,
+                    onActionClick = { action ->
                         onActionClick(action, selectedMedia)
-                    }, allowedActions = listOfNotNull(
+                    },
+                    allowedActions = listOfNotNull(
                         DetailAction.SHARE,
                         DetailAction.FAVOURITE,
                         DetailAction.DELETE,
                         if (selectedMedia.none { it.isVideo }) {
                             DetailAction.COPY
                         } else null
-                    )
+                    ),
+                    modifier = Modifier.onSizeChanged(onBarSizeChanged)
                 )
             } else if (isMainGallery) {
-
-                if (fontScale > 1.5f) {
-                    NavigationBar {
-                        GalleryTab.entries.forEach { tab ->
-
-                            NavigationBarItem(
-                                modifier = Modifier.align(Alignment.CenterVertically),
-                                selected = selectedTab == tab,
-                                onClick = { onTabSelected(tab) },
-                                icon = {
-                                    when(tab.title){
-                                        "All" -> Icon(Icons.Rounded.AllInbox, contentDescription = null)
-                                        "Albums" -> Icon(Icons.Rounded.Window, contentDescription = null)
-                                            "Videos"->Icon(Icons.Rounded.Videocam, contentDescription = null)
-                                                "Others" ->Icon(Icons.Rounded.Favorite, contentDescription = null)
-                                    }
-                                },
-                                label = { Text(tab.title, maxLines = 1) }
-                            )
-                        }
-                    }
-                } else {
-
-                    FloatingGalleryBar(
-                        selectedTab = selectedTab,
-                        onClick = onTabClick,
-                        onTabSelected = onTabSelected,
-                        modifier = Modifier.sharedBounds(
+                FloatingGalleryBar(
+                    selectedTab = selectedTab,
+                    onClick = onTabClick,
+                    onTabSelected = onTabSelected,
+                    modifier = Modifier
+                        .onSizeChanged(onBarSizeChanged)
+                        .sharedBounds(
                             sharedContentState = rememberSharedContentState(key = "floating_navigation_bar"),
                             animatedVisibilityScope = animatedVisibilityScope,
                             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
                             zIndexInOverlay = 1f
-                        )
-                        , isVerticalRail = switchToVertical
-                    )
-                }
+                        ),
+                    isVerticalRail = isRail
+                )
             } else {
-                Spacer(modifier = Modifier.height(1.dp))
+                Spacer(Modifier.height(1.dp))
             }
         }
     }
