@@ -74,10 +74,8 @@ fun FaceIndexingStartSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 640.dp)
-                .align(Alignment.CenterHorizontally)
                 .padding(horizontal = 24.dp)
-                .padding(bottom = navBarBottomPadding + 16.dp)
+                .padding(bottom = 8.dp)
         ) {
 
             Column(
@@ -179,7 +177,7 @@ fun FaceIndexingStartSheet(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 52.dp),
+                    .heightIn(min = 56.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(
@@ -194,7 +192,7 @@ fun FaceIndexingStartSheet(
                 onClick = onDismiss,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 44.dp)
+                    .heightIn(min = 48.dp)
             ) {
                 Text("Not now")
             }

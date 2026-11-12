@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
@@ -50,11 +51,14 @@ fun SharedTransitionScope.PersonDetailView(
     onViewModeChanged: (GalleryViewMode) -> Unit,
     onUpdateName: (Long, String) -> Unit,
     tabAnimatedVisibilityScope: AnimatedVisibilityScope,
+
     personAnimatedVisibilityScope: AnimatedVisibilityScope,
     onBackClick: () -> Unit,
     onMediaClick: (Long) -> Unit,
-    modifier: Modifier = Modifier
-) {
+    modifier: Modifier = Modifier,
+    contentBottomPadding: Dp = 0.dp,
+
+    ) {
     var showEditDialog by remember { mutableStateOf(false) }
     var editNameValue by remember(cluster.name) { mutableStateOf(cluster.name) }
     val gridState = rememberLazyGridState()
@@ -142,6 +146,8 @@ fun SharedTransitionScope.PersonDetailView(
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             albumAnimatedVisibilityScope = personAnimatedVisibilityScope,
             modifier = Modifier.weight(1f),
+            contentBottomPadding=contentBottomPadding
+
         )
     }
 }

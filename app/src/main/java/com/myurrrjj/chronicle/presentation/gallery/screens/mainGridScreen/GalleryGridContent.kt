@@ -13,10 +13,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -121,9 +123,11 @@ fun SharedTransitionScope.GalleryGridContent(
                                     shape = CircleShape,
                                     color = MaterialTheme.colorScheme.surfaceVariant,
                                 ) {
-                                    Row(
+                                    FlowRow(
                                         modifier = Modifier.padding(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        maxItemsInEachRow = 2
                                     ) {
                                         OthersSelection.entries.forEach { selection ->
                                             val isSelected =
@@ -147,7 +151,8 @@ fun SharedTransitionScope.GalleryGridContent(
                                                             )
                                                         )
                                                     }
-                                                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                                                    .heightIn(min = 48.dp)
+                                                    .padding(horizontal = 20.dp, vertical = 10.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
@@ -174,7 +179,7 @@ fun SharedTransitionScope.GalleryGridContent(
                                 onResume = { onEvent(GalleryEvent.ResumeFaceIndexing) },
                                 onForceStop = { onEvent(GalleryEvent.ForceStopFaceIndexing) },
                                 onReset = { onEvent(GalleryEvent.ResetFaceIndexing) },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(start = contentStartPadding +2.dp).padding(horizontal = 16.dp,vertical =16.dp)
                             )
                         }
 

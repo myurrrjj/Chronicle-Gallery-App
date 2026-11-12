@@ -169,7 +169,7 @@ fun DetailScreen(
 
     var controlPosition by remember { mutableStateOf(ControlPosition.BOTTOM) }
     val configuration = LocalConfiguration.current
-    val videoIsLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val videoIsLandscape = configuration.screenWidthDp>configuration.screenHeightDp
 
     LaunchedEffect(videoIsLandscape) {
         controlPosition = if (!videoIsLandscape) ControlPosition.BOTTOM else ControlPosition.RIGHT

@@ -79,7 +79,7 @@ fun MediaInfoSheet(sheetState: InfoSheetState, onDismiss: () -> Unit) {
                 .padding(horizontal = 24.dp)
                 .padding(
                     top = 24.dp,
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                    bottom = 24.dp
                 )
         ) {
             AnimatedContent(targetState = sheetState, label = "SheetContent") { currentState ->

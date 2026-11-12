@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -169,21 +170,31 @@ fun FaceIndexingProgressCard(
 
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                horizontalArrangement = Arrangement.spacedBy(4.dp,Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (progress.canPause) {
-                    TextButton(onClick = onPause) { Text("Pause",maxLines= 1,overflow = TextOverflow.Ellipsis) }
-                }
-                if (progress.canResume) {
-                    TextButton(onClick = onResume) { Text("Resume",maxLines= 1,overflow = TextOverflow.Ellipsis) }
-                }
-                if (progress.isBusy) {
-                    TextButton(onClick = { showStopDialog = true }) {
-                        Text("Stop now",maxLines= 1,overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onPause, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Pause")
                     }
                 }
-                TextButton(onClick = { showResetDialog = true }) {
-                    Text("Reset", color = MaterialTheme.colorScheme.error,maxLines= 1,overflow = TextOverflow.Ellipsis)
+                if (progress.canResume) {
+                    TextButton(onClick = onResume, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Resume")
+                    }
+                }
+                if (progress.isBusy) {
+                    TextButton(
+                        onClick = { showStopDialog = true },
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Stop now", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(
+                    onClick = { showResetDialog = true },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Reset", color = MaterialTheme.colorScheme.error)
                 }
             }
         }

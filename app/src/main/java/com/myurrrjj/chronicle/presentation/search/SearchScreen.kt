@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.collections.immutable.persistentSetOf
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -54,7 +56,6 @@ import com.myurrrjj.chronicle.presentation.search.contract.SearchEffect
 import com.myurrrjj.chronicle.presentation.search.contract.SearchEvent
 import com.myurrrjj.chronicle.presentation.search.contract.SearchState
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -119,11 +120,14 @@ private fun IndexingOverlay(progress: Float) {
     )
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Box(
+
+    Box(
             modifier = Modifier
                 .size(72.dp)
                 .clip(RoundedCornerShape(24.dp))
@@ -144,16 +148,22 @@ private fun IndexingOverlay(progress: Float) {
             text = "Preparing Smart Search...",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 420.dp)
         )
+
 
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text = "Organizing your memories for lightning-fast results.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 420.dp)
         )
+
 
         Spacer(modifier = Modifier.height(32.dp))
 

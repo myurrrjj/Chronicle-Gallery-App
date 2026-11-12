@@ -5,6 +5,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
@@ -24,7 +25,9 @@ fun SharedTransitionScope.GalleryDetailContent(
     selectedMediaIds: ImmutableSet<Long>,
     onEvent: (GalleryEvent) -> Unit,
     galleryToDetailScope: AnimatedContentScope,
-    tabAnimatedVisibilityScope: AnimatedContentScope
+    tabAnimatedVisibilityScope: AnimatedContentScope,
+    contentBottomPadding: Dp = 0.dp
+
 ) {
     if (target.album != null) {
         AlbumDetailView(
@@ -46,7 +49,9 @@ fun SharedTransitionScope.GalleryDetailContent(
                 onEvent(GalleryEvent.ChangeViewMode(newMode))
             },
             albumAnimatedVisibilityScope = galleryToDetailScope,
-            tabAnimatedVisibilityScope = tabAnimatedVisibilityScope
+            tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
+            contentBottomPadding = contentBottomPadding,
+
         )
     } else if (target.person != null) {
         PersonDetailView(
@@ -69,7 +74,9 @@ fun SharedTransitionScope.GalleryDetailContent(
                 onEvent(GalleryEvent.ChangeViewMode(newMode))
             },
             personAnimatedVisibilityScope = galleryToDetailScope,
-            tabAnimatedVisibilityScope = tabAnimatedVisibilityScope
+            tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
+            contentBottomPadding = contentBottomPadding,
+
         )
     }
 }

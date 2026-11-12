@@ -82,7 +82,7 @@ fun GalleryScreen(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     val contentBottomPadding = if (layout.useNavigationRail) {
-        0.dp
+        navigationBarInset + 16.dp
     } else {
         bottomBarHeight + navigationBarInset + 16.dp
     }
@@ -166,7 +166,8 @@ fun GalleryScreen(
                             selectedMediaIds = interactionState.selectedMediaIds,
                             onEvent = viewModel::setEvent,
                             galleryToDetailScope = galleryToDetailScope,
-                            tabAnimatedVisibilityScope = animatedVisibilityScope
+                            tabAnimatedVisibilityScope = animatedVisibilityScope,
+                            contentBottomPadding = contentBottomPadding
                         )
                     }
                 }

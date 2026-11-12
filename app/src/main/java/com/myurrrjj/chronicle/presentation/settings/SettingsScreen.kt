@@ -5,6 +5,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -325,13 +326,8 @@ private fun SettingsToggleCard(item: SettingItem.Toggle) {
 
 @Composable
 private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
-    val fontScale = LocalDensity.current.fontScale
-    val longLabel = remember(item.options) {
-        item.options.any { item.optionLabel(it).length>10}
-    }
 
-    val useMultipleRows = item.options.size > 3 ||
-            (item.options.size == 3 && (fontScale > 1.15f || longLabel))
+
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -381,13 +377,11 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val chunkSize = if (useMultipleRows) 2 else item.options.size.coerceAtLeast(1)
-                    item.options
-                        .chunked(chunkSize)
+                BoxWithConstraints(modifier = Modifier.padding(6.dp)) {
+                    val columns = (maxWidth / 96.dp).toInt().coerceIn(1, item.options.size)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        item.options
+                            .chunked(columns)
                         .forEach { rowOptions ->
                             Row(
                                 modifier = Modifier
@@ -441,12 +435,12 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
                                     }
                                 }
 
-                                if (useMultipleRows && rowOptions.size == 1) {
+                                repeat(columns - rowOptions.size) {
                                     Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
-                }
+                }}
             }
         }
     }
