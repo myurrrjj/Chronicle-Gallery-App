@@ -14,6 +14,5 @@ interface MediaRepository {
     suspend fun toggleFavourite(media: MediaAsset, isFavourite: Boolean)
 
     suspend fun getMediaDetails(uriString: String, isVideo: Boolean): DetailedMediaInfo
-    fun observeImageCount(): Flow<Int> =
-        getAllMedia().map { media -> media.count { !it.isVideo } }.catch { emit(0) }
+    fun observeImageCount(): Flow<Int>
 }

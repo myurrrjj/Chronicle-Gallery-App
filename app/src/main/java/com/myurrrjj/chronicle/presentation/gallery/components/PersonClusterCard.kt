@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.myurrrjj.chronicle.core.presentation.components.bouncyClick
+import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 import com.myurrrjj.chronicle.domain.model.MediaAsset
 import com.myurrrjj.chronicle.domain.model.PersonCluster
 import java.io.File
@@ -54,7 +55,10 @@ fun SharedTransitionScope.PersonClusterCard(
     val imageRequest = remember(cropFile) {
         ImageRequest.Builder(context)
             .data(cropFile)
-            .crossfade(true)
+            .size(ThumbnailSizes.FACE_CROP_PX)
+            .memoryCacheKey(
+                ThumbnailSizes.faceCacheKey(cropFile.absolutePath, ThumbnailSizes.FACE_CROP_PX)
+            )
             .build()
     }
 

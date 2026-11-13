@@ -1,9 +1,6 @@
 package com.myurrrjj.chronicle.presentation.gallery
 
 import androidx.lifecycle.viewModelScope
-import androidx.work.Constraints
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.myurrrjj.chronicle.core.indexing.FaceIndexingController
 import com.myurrrjj.chronicle.core.presentation.mvi.BaseViewModel
@@ -15,24 +12,29 @@ import com.myurrrjj.chronicle.domain.repository.MediaRepository
 import com.myurrrjj.chronicle.domain.repository.SettingsRepository
 import com.myurrrjj.chronicle.domain.usecase.GetFilteredMediaUseCase
 import com.myurrrjj.chronicle.domain.usecase.GroupMediaUseCase
+import com.myurrrjj.chronicle.presentation.gallery.components.DetailAction
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEffect
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryState
-import com.myurrrjj.chronicle.presentation.gallery.components.DetailAction
 import com.myurrrjj.chronicle.presentation.gallery.model.Album
 import com.myurrrjj.chronicle.presentation.gallery.model.GalleryTab
 import com.myurrrjj.chronicle.presentation.gallery.model.OthersSelection
-import com.myurrrjj.chronicle.worker.FaceIndexingWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.PersistentSet
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentSet
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -48,6 +50,8 @@ class GalleryViewModel @Inject constructor(
     private var isFirstSettingsLoad = true
     private var autoStartChecked = false
 
+    private var regroupJob: Job? = null
+
     init {
         observeFavorites()
         observePeopleClusters()
@@ -61,20 +65,23 @@ class GalleryViewModel @Inject constructor(
     private fun observeSettings() {
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
+                val wasFirstLoad = isFirstSettingsLoad
+                val previousMode = uiState.value.configState.currentViewMode
+                val targetMode = if (wasFirstLoad) settings.defaultGalleryViewMode else previousMode
+                isFirstSettingsLoad = false
 
                 setState {
-                    val newViewMode =
-                        if (isFirstSettingsLoad) settings.defaultGalleryViewMode else configState.currentViewMode
-                    if (isFirstSettingsLoad && newViewMode != configState.currentViewMode) {
-                        regroupMedia(contentState.displayedMediaList, newViewMode)
-                    }
+
                     copy(
                         configState = configState.copy(
-                            currentViewMode = newViewMode,
+                            currentViewMode = targetMode,
                             autoPlayVideo = settings.autoPlayVideo
                         ),
                         faceIndexingOptions = settings.faceIndexingOptions
-                    ).also { isFirstSettingsLoad = false }
+                    )
+                }
+                if (wasFirstLoad && targetMode != previousMode) {
+                    regroupMedia(uiState.value.contentState.displayedMediaList, targetMode)
                 }
             }
         }
@@ -84,24 +91,24 @@ class GalleryViewModel @Inject constructor(
         val currentState = uiState.value
         if (currentState.interactionState.othersSelection == selection) return
 
-        val filteredList = getFilteredMediaUseCase(
-            masterList = currentState.contentState.masterMediaList,
-            favouriteList = currentState.contentState.favouriteMediaList,
-            tab = currentState.interactionState.selectedTab,
-            othersSelection = selection
-        )
         setState {
             copy(
                 interactionState = interactionState.copy(
                     othersSelection = selection,
                     selectionMode = false,
                     selectedMediaIds = persistentSetOf()
-                ), contentState = contentState.copy(
-                    displayedMediaList = filteredList
                 )
             )
         }
-        regroupMedia(filteredList, currentState.configState.currentViewMode)
+
+        regroupWithFilter(viewMode = currentState.configState.currentViewMode) {
+            getFilteredMediaUseCase(
+                masterList = currentState.contentState.masterMediaList,
+                favouriteList = currentState.contentState.favouriteMediaList,
+                tab = currentState.interactionState.selectedTab,
+                othersSelection = selection
+            )
+        }
     }
 
     override fun handleEvent(event: GalleryEvent) {
@@ -125,36 +132,24 @@ class GalleryViewModel @Inject constructor(
             }
 
             is GalleryEvent.OpenAlbum -> {
-                val newDisplayedList = uiState.value.contentState.masterMediaList.filter {
-                    (it.folderName ?: "Unknown") == event.album.name
-                }.toPersistentList()
+                val album = event.album
                 setState {
-                    copy(
-                        interactionState = interactionState.copy(openedAlbum = event.album),
-                        contentState = contentState.copy(displayedMediaList = newDisplayedList)
-                    )
+                    copy(interactionState = interactionState.copy(openedAlbum = album))
                 }
-                regroupMedia(newDisplayedList, uiState.value.configState.currentViewMode)
+                regroupWithFilter(viewMode = uiState.value.configState.currentViewMode) {
+                    uiState.value.contentState.masterMediaList.filter {
+                        (it.folderName ?: "Unknown") == album.name
+                    }.toPersistentList()
+                }
             }
 
             GalleryEvent.CloseAlbum -> {
-                val newDisplayedList = when (uiState.value.interactionState.selectedTab) {
-                    GalleryTab.VIDEOS -> uiState.value.contentState.masterMediaList.filter { it.isVideo }
-                        .toPersistentList()
-
-                    GalleryTab.OTHERS -> if (uiState.value.interactionState.othersSelection == OthersSelection.FAVOURITES) {
-                        uiState.value.contentState.favouriteMediaList
-                    } else persistentListOf()
-
-                    else -> uiState.value.contentState.masterMediaList
-                }
                 setState {
-                    copy(
-                        interactionState = interactionState.copy(openedAlbum = null),
-                        contentState = contentState.copy(displayedMediaList = newDisplayedList)
-                    )
+                    copy(interactionState = interactionState.copy(openedAlbum = null))
                 }
-                regroupMedia(newDisplayedList, uiState.value.configState.currentViewMode)
+                regroupWithFilter(viewMode = uiState.value.configState.currentViewMode) {
+                    resolveTabMediaList(uiState.value)
+                }
             }
 
             is GalleryEvent.EnterSelectionMode -> {
@@ -178,13 +173,21 @@ class GalleryViewModel @Inject constructor(
             }
 
             GalleryEvent.SelectAll -> {
-                setState {
-                    val allIds = when (interactionState.selectedTab) {
+                viewModelScope.launch(Dispatchers.Default) {
+                    val stateSnapshot = uiState.value
+                    val allIds = when (stateSnapshot.interactionState.selectedTab) {
                         GalleryTab.ALBUMS -> persistentSetOf()
-                        else -> contentState.displayedMediaList.map { it.id }.toImmutableSet()
+                        else -> stateSnapshot.contentState.displayedMediaList.map { it.id }
+                            .toPersistentSet()
+
                     }
-                    copy(interactionState = interactionState.copy(selectedMediaIds = allIds))
+
+                    setState {
+                        copy(interactionState = interactionState.copy(selectedMediaIds = allIds))
+                    }
                 }
+
+
             }
 
             GalleryEvent.ClearSelection -> {
@@ -195,11 +198,14 @@ class GalleryViewModel @Inject constructor(
 
             is GalleryEvent.ToggleMediaSelection -> {
                 setState {
-                    val newSet = (if (interactionState.selectedMediaIds.contains(event.mediaId)) {
-                        interactionState.selectedMediaIds - event.mediaId
+                    val currentSet = interactionState.selectedMediaIds as? PersistentSet<Long> ?: interactionState.selectedMediaIds.toPersistentSet()
+
+
+                    val newSet = if (currentSet.contains(event.mediaId)) {
+                        currentSet.remove(event.mediaId)
                     } else {
-                        interactionState.selectedMediaIds + event.mediaId
-                    }).toImmutableSet()
+                        currentSet.add(event.mediaId)
+                    }
 
                     val keepSelectionMode = newSet.isNotEmpty()
                     copy(
@@ -212,6 +218,9 @@ class GalleryViewModel @Inject constructor(
             }
 
             is GalleryEvent.ChangeViewMode -> {
+                if (uiState.value.configState.currentViewMode == event.viewMode) return
+
+
                 setState {
                     copy(configState = configState.copy(currentViewMode = event.viewMode))
                 }
@@ -248,6 +257,7 @@ class GalleryViewModel @Inject constructor(
             GalleryEvent.ResetFaceIndexing -> {
                 viewModelScope.launch { faceIndexingController.reset() }
             }
+
             GalleryEvent.OnSettingsClicked -> {
                 setEffect { GalleryEffect.NavigateToSettings }
             }
@@ -262,77 +272,86 @@ class GalleryViewModel @Inject constructor(
                     )
                 }
             }
+
             GalleryEvent.ClearSearchMediaList -> {
-                val newDisplayedList = when (uiState.value.interactionState.selectedTab) {
-                    GalleryTab.VIDEOS -> uiState.value.contentState.masterMediaList.filter { it.isVideo }.toPersistentList()
-                    GalleryTab.OTHERS -> if (uiState.value.interactionState.othersSelection == OthersSelection.FAVOURITES) {
-                        uiState.value.contentState.favouriteMediaList
-                    } else persistentListOf()
-                    else -> uiState.value.contentState.masterMediaList
+                regroupWithFilter(viewMode = uiState.value.configState.currentViewMode) {
+                    resolveTabMediaList(uiState.value)
                 }
-                setState {
-                    copy(
-                        contentState = contentState.copy(displayedMediaList = newDisplayedList)
-                    )
-                }
-                regroupMedia(newDisplayedList, uiState.value.configState.currentViewMode)
             }
 
+        }
+    }
+
+    private fun resolveTabMediaList(state: GalleryState): ImmutableList<MediaAsset> {
+        return when (state.interactionState.selectedTab) {
+            GalleryTab.VIDEOS -> state.contentState.masterMediaList
+                .filter { it.isVideo }
+                .toPersistentList()
+            GalleryTab.OTHERS -> if (state.interactionState.othersSelection == OthersSelection.FAVOURITES) {
+                state.contentState.favouriteMediaList
+            } else {
+                persistentListOf()
+            }
+            else -> state.contentState.masterMediaList
         }
     }
 
     private fun observePeopleClusters() {
         viewModelScope.launch {
             faceRepository.getAllClusters().collect { clusters ->
-                setState { copy(contentState = contentState.copy(peopleClusters = clusters.toImmutableList())) }
+                val immutableClusters = withContext(Dispatchers.Default){
+                    clusters.toImmutableList()
+                }
+                setState { copy(contentState = contentState.copy(peopleClusters = immutableClusters)) }
             }
         }
     }
 
     private fun observeFaceIndexing() {
         viewModelScope.launch {
-            faceIndexingController.progress.collect { progress ->
-                setState { copy(faceIndexing = progress) }
-            }
+            faceIndexingController.progress
+                .distinctUntilChanged { old, new ->
+                    old.status == new.status &&
+                            old.processed == new.processed &&
+                            old.total == new.total &&
+                            old.facesFound == new.facesFound &&
+                            old.message == new.message
+                }
+                .collect { progress ->
+                    setState { copy(faceIndexing = progress) }
+                }
         }
     }
 
     private fun openPerson(cluster: PersonCluster) {
-        viewModelScope.launch {
-            val mediaIds = faceRepository.getMediaIdsForCluster(cluster.id).toSet()
-            val personMedia =
-                uiState.value.contentState.masterMediaList.filter { it.id in mediaIds }
-                    .toPersistentList()
+        regroupJob?.cancel()
+        regroupJob = viewModelScope.launch(Dispatchers.Default) {
+            val mediaIds = faceRepository.getMediaIdsForCluster(cluster.id).toHashSet()
+            val viewMode = uiState.value.configState.currentViewMode
+            val personMedia = uiState.value.contentState.masterMediaList
+                .filter { it.id in mediaIds }
+                .toPersistentList()
+            val grouped = groupMediaUseCase(personMedia, viewMode)
 
             setState {
                 copy(
                     interactionState = interactionState.copy(openedPersonCluster = cluster),
-                    contentState = contentState.copy(displayedMediaList = personMedia)
+                    contentState = contentState.copy(
+                        displayedMediaList = personMedia,
+                        groupedMedia = grouped
+                    )
                 )
             }
-            regroupMedia(personMedia, uiState.value.configState.currentViewMode)
         }
     }
 
     private fun closePerson() {
-        val newDisplayedList = when (uiState.value.interactionState.selectedTab) {
-            GalleryTab.VIDEOS -> uiState.value.contentState.masterMediaList.filter { it.isVideo }
-                .toPersistentList()
-
-            GalleryTab.OTHERS -> if (uiState.value.interactionState.othersSelection == OthersSelection.FAVOURITES) {
-                uiState.value.contentState.favouriteMediaList
-            } else persistentListOf()
-
-            else -> uiState.value.contentState.masterMediaList
-        }
-
         setState {
-            copy(
-                interactionState = interactionState.copy(openedPersonCluster = null),
-                contentState = contentState.copy(displayedMediaList = newDisplayedList)
-            )
+            copy(interactionState = interactionState.copy(openedPersonCluster = null))
         }
-        regroupMedia(newDisplayedList, uiState.value.configState.currentViewMode)
+        regroupWithFilter(viewMode = uiState.value.configState.currentViewMode) {
+            resolveTabMediaList(uiState.value)
+        }
     }
 
     private fun updatePersonName(clusterId: Long, newName: String) {
@@ -342,42 +361,61 @@ class GalleryViewModel @Inject constructor(
     }
 
     private fun regroupMedia(mediaList: List<MediaAsset>, viewMode: GalleryViewMode) {
-        viewModelScope.launch(Dispatchers.Default) {
+        regroupJob?.cancel()
+        regroupJob = viewModelScope.launch(Dispatchers.Default) {
             val grouped = groupMediaUseCase(mediaList, viewMode)
-
             setState {
                 copy(contentState = contentState.copy(groupedMedia = grouped))
             }
         }
     }
 
-    private fun handleMediaAction(action: DetailAction, explicitMedia: List<MediaAsset>) {
-        val targetMedia = explicitMedia.ifEmpty {
-            val selectedIds = uiState.value.interactionState.selectedMediaIds
-            uiState.value.contentState.masterMediaList.filter { it.id in selectedIds }
+    private fun regroupWithFilter(
+        viewMode: GalleryViewMode,
+        filterBlock: () -> ImmutableList<MediaAsset>
+    ) {
+        regroupJob?.cancel()
+        regroupJob = viewModelScope.launch(Dispatchers.Default) {
+            val filtered = filterBlock()
+            val grouped = groupMediaUseCase(filtered, viewMode)
+            setState {
+                copy(
+                    contentState = contentState.copy(
+                        displayedMediaList = filtered,
+                        groupedMedia = grouped
+                    )
+                )
+            }
         }
+    }
 
-        if (targetMedia.isEmpty()) return
-
-        when (action) {
-            DetailAction.COPY -> {
-                val uris = targetMedia.map { it.uriString }
-                setEffect { GalleryEffect.CopyMedia(uris) }
+    private fun handleMediaAction(action: DetailAction, explicitMedia: List<MediaAsset>) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val targetMedia = explicitMedia.ifEmpty {
+                val selectedIds = uiState.value.interactionState.selectedMediaIds
+                uiState.value.contentState.masterMediaList.filter { it.id in selectedIds }
             }
 
-            DetailAction.SHARE -> {
-                val uris = targetMedia.map { it.uriString }
-                val mimeType = if (targetMedia.size == 1) targetMedia.first().mimeType else "*/*"
-                setEffect { GalleryEffect.ShareMedia(uris, mimeType) }
-            }
+            if (targetMedia.isEmpty()) return@launch
 
-            DetailAction.DELETE -> {
-                val uris = targetMedia.map { it.uriString }
-                setEffect { GalleryEffect.DeleteMedia(uris) }
-            }
+            when (action) {
+                DetailAction.COPY -> {
+                    val uris = targetMedia.map { it.uriString }
+                    setEffect { GalleryEffect.CopyMedia(uris) }
+                }
 
-            DetailAction.FAVOURITE -> {
-                viewModelScope.launch {
+                DetailAction.SHARE -> {
+                    val uris = targetMedia.map { it.uriString }
+                    val mimeType = if (targetMedia.size == 1) targetMedia.first().mimeType else "*/*"
+                    setEffect { GalleryEffect.ShareMedia(uris, mimeType) }
+                }
+
+                DetailAction.DELETE -> {
+                    val uris = targetMedia.map { it.uriString }
+                    setEffect { GalleryEffect.DeleteMedia(uris) }
+                }
+
+                DetailAction.FAVOURITE -> {
                     val favoriteIds = uiState.value.contentState.favoriteMediaIds
                     val allAreFavorites = targetMedia.all { it.id in favoriteIds }
 
@@ -386,18 +424,18 @@ class GalleryViewModel @Inject constructor(
                     }
                     setEvent(GalleryEvent.ExitSelectionMode)
                 }
-            }
 
-            DetailAction.INFO -> {
-                if (targetMedia.size == 1) {
-                    fetchMediaDetails(targetMedia.first())
+                DetailAction.INFO -> {
+                    if (targetMedia.size == 1) {
+                        fetchMediaDetails(targetMedia.first())
+                    }
                 }
-            }
 
-            DetailAction.EDIT -> {
-                if (targetMedia.size == 1) {
-                    val media = targetMedia.first()
-                    setEffect { GalleryEffect.EditMedia(media.uriString, media.mimeType) }
+                DetailAction.EDIT -> {
+                    if (targetMedia.size == 1) {
+                        val media = targetMedia.first()
+                        setEffect { GalleryEffect.EditMedia(media.uriString, media.mimeType) }
+                    }
                 }
             }
         }
@@ -425,22 +463,24 @@ class GalleryViewModel @Inject constructor(
         val currentState = uiState.value
         if (currentState.interactionState.selectedTab == tab) return
 
-        val filteredList = getFilteredMediaUseCase(
-            masterList = currentState.contentState.masterMediaList,
-            favouriteList = currentState.contentState.favouriteMediaList,
-            tab = tab,
-            othersSelection = currentState.interactionState.othersSelection
-        )
         setState {
             copy(
                 interactionState = interactionState.copy(
-                    selectedTab = tab, selectionMode = false, selectedMediaIds = persistentSetOf()
-                ), contentState = contentState.copy(
-                    displayedMediaList = filteredList
+                    selectedTab = tab,
+                    selectionMode = false,
+                    selectedMediaIds = persistentSetOf()
                 )
             )
         }
-        regroupMedia(filteredList, currentState.configState.currentViewMode)
+
+        regroupWithFilter(viewMode = currentState.configState.currentViewMode) {
+            getFilteredMediaUseCase(
+                masterList = currentState.contentState.masterMediaList,
+                favouriteList = currentState.contentState.favouriteMediaList,
+                tab = tab,
+                othersSelection = currentState.interactionState.othersSelection
+            )
+        }
     }
 
     private fun handlePermission(isGranted: Boolean) {
@@ -449,7 +489,8 @@ class GalleryViewModel @Inject constructor(
         else setState {
             copy(
                 configState = configState.copy(
-                    isLoading = false, error = "Permission required to display media."
+                    isLoading = false,
+                    error = "Permission required to display media."
                 )
             )
         }
@@ -466,7 +507,8 @@ class GalleryViewModel @Inject constructor(
                 setState {
                     copy(
                         configState = configState.copy(
-                            isLoading = true, error = null
+                            isLoading = true,
+                            error = null
                         )
                     )
                 }
@@ -474,58 +516,69 @@ class GalleryViewModel @Inject constructor(
                 setState {
                     copy(
                         configState = configState.copy(
-                            isLoading = false, error = exception.message
+                            isLoading = false,
+                            error = exception.message
                         )
                     )
                 }
             }.collect { media ->
-                val immutableMedia = media.toImmutableList()
-                val processedAlbums = immutableMedia.groupBy { it.folderName ?: "Unknown" }
-                    .map { (folderName, items) ->
-                        Album(
-                            name = folderName, items.size, items.first()
-                        )
-                    }.sortedBy { it.name }.toImmutableList()
+                val stateSnapshot = uiState.value
+                val (immutableMedia, processedAlbums, newDisplayedList, initialGrouped) =
+                    withContext(Dispatchers.Default) {
+                        val immMedia = media.toImmutableList()
+                        val albums = immMedia.groupBy { it.folderName ?: "Unknown" }
+                            .map { (folderName, items) ->
+                                Album(
+                                    name = folderName,
+                                    mediaCount = items.size,
+                                    coverMedia = items.first()
+                                )
+                            }
+                            .sortedBy { it.name }
+                            .toImmutableList()
 
-                setState {
-                    val newDisplayedList = when {
-                        interactionState.openedAlbum != null -> {
-                            immutableMedia.filter {
-                                (it.folderName
-                                    ?: "Unknown") == interactionState.openedAlbum?.name
-                            }.toImmutableList()
-                        }
-
-                        interactionState.openedPersonCluster != null -> {
-                            contentState.displayedMediaList
-                        }
-
-                        else -> when (interactionState.selectedTab) {
-                            GalleryTab.ALL -> immutableMedia
-                            GalleryTab.VIDEOS -> immutableMedia.filter { it.isVideo }
-                                .toImmutableList()
-
-                            GalleryTab.ALBUMS -> persistentListOf()
-                            GalleryTab.OTHERS -> {
-                                if (interactionState.othersSelection == OthersSelection.FAVOURITES) contentState.favouriteMediaList
-                                else persistentListOf()
+                        val displayed = when {
+                            stateSnapshot.interactionState.openedAlbum != null -> {
+                                immMedia.filter {
+                                    (it.folderName ?: "Unknown") ==
+                                            stateSnapshot.interactionState.openedAlbum.name
+                                }.toImmutableList()
+                            }
+                            stateSnapshot.interactionState.openedPersonCluster != null -> {
+                                stateSnapshot.contentState.displayedMediaList
+                            }
+                            else -> when (stateSnapshot.interactionState.selectedTab) {
+                                GalleryTab.ALL -> immMedia
+                                GalleryTab.VIDEOS -> immMedia.filter { it.isVideo }.toImmutableList()
+                                GalleryTab.ALBUMS -> persistentListOf()
+                                GalleryTab.OTHERS -> {
+                                    if (stateSnapshot.interactionState.othersSelection == OthersSelection.FAVOURITES) {
+                                        stateSnapshot.contentState.favouriteMediaList
+                                    } else {
+                                        persistentListOf()
+                                    }
+                                }
                             }
                         }
+
+                        val grouped = groupMediaUseCase(
+                            displayed,
+                            stateSnapshot.configState.currentViewMode
+                        )
+                        Quadruple(immMedia, albums, displayed, grouped)
                     }
 
+                setState {
                     copy(
                         configState = configState.copy(isLoading = false),
                         contentState = contentState.copy(
                             masterMediaList = immutableMedia,
                             displayedMediaList = newDisplayedList,
+                            groupedMedia = initialGrouped,
                             albums = processedAlbums
                         )
                     )
                 }
-                regroupMedia(
-                    uiState.value.contentState.displayedMediaList,
-                    uiState.value.configState.currentViewMode
-                )
 
                 if (!autoStartChecked) {
                     autoStartChecked = true
@@ -542,43 +595,42 @@ class GalleryViewModel @Inject constructor(
     private fun observeFavorites() {
         viewModelScope.launch {
             mediaRepository.getFavorites().collect { favourites ->
-                val immutableFavourites = favourites.toImmutableList()
-                val ids = favourites.map { it.id }.toImmutableSet()
+                val stateSnapshot = uiState.value
+                val isViewingFavourites =
+                    stateSnapshot.interactionState.openedAlbum == null &&
+                            stateSnapshot.interactionState.openedPersonCluster == null &&
+                            stateSnapshot.interactionState.selectedTab == GalleryTab.OTHERS &&
+                            stateSnapshot.interactionState.othersSelection == OthersSelection.FAVOURITES
+
+                val (immutableFavourites, ids, groupedFavs) = withContext(Dispatchers.Default) {
+                    val immFavs = favourites.toImmutableList()
+                    val favIds = favourites.map { it.id }.toImmutableSet()
+                    val grouped = if (isViewingFavourites) {
+                        groupMediaUseCase(immFavs, stateSnapshot.configState.currentViewMode)
+                    } else {
+                        null
+                    }
+                    Triple(immFavs, favIds, grouped)
+                }
 
                 setState {
-                    val newDisplayedList = when {
-                        interactionState.openedAlbum != null || interactionState.openedPersonCluster != null -> contentState.displayedMediaList
-                        interactionState.selectedTab == GalleryTab.OTHERS && interactionState.othersSelection == OthersSelection.FAVOURITES -> immutableFavourites
-                        else -> contentState.displayedMediaList
-                    }
-
                     copy(
                         contentState = contentState.copy(
                             favouriteMediaList = immutableFavourites,
                             favoriteMediaIds = ids,
-                            displayedMediaList = newDisplayedList
+                            displayedMediaList = if (isViewingFavourites) immutableFavourites else contentState.displayedMediaList,
+                            groupedMedia = groupedFavs ?: contentState.groupedMedia
                         )
                     )
                 }
-                regroupMedia(
-                    uiState.value.contentState.displayedMediaList,
-                    uiState.value.configState.currentViewMode
-                )
             }
         }
     }
 
-//    private fun startManualFaceIndexing() {
-//        val constraints =
-//            Constraints.Builder()
-//                .setRequiresBatteryNotLow(true)
-//                .setRequiresStorageNotLow(true).build()
-//
-//        val workRequest =
-//            OneTimeWorkRequestBuilder<FaceIndexingWorker>().setConstraints(constraints).build()
-//
-//        workManager.enqueueUniqueWork(
-//            "FaceIndexing", ExistingWorkPolicy.KEEP, workRequest
-//        )
-//    }
+    private data class Quadruple<A, B, C, D>(
+        val first: A,
+        val second: B,
+        val third: C,
+        val fourth: D
+    )
 }

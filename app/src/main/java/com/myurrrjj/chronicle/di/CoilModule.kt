@@ -20,23 +20,14 @@ object CoilModule {
     @Provides
     @Singleton
     fun provideImageLoader(@ApplicationContext context: Context): ImageLoader {
-        return ImageLoader.Builder(context)
-            .components {
+        return ImageLoader.Builder(context).components {
                 add(NativeThumbnailFetcher.Factory(context))
                 add(VideoFrameDecoder.Factory())
-            }
-            .memoryCache {
-                MemoryCache.Builder(context)
-                    .maxSizePercent(.25)
-                    .build()
-            }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("gallery_image_cache"))
-                    .maxSizeBytes(256L * 1024 * 1024)
-                    .build()
-            }
-            .respectCacheHeaders(false)
-            .build()
+            }.memoryCache {
+                MemoryCache.Builder(context).maxSizePercent(.25).build()
+            }.diskCache {
+                DiskCache.Builder().directory(context.cacheDir.resolve("gallery_image_cache"))
+                    .maxSizeBytes(256L * 1024 * 1024).build()
+            }.respectCacheHeaders(false).build()
     }
 }

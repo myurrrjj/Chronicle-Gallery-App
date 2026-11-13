@@ -41,8 +41,7 @@ private fun FaceIndexingStartSheetPreview() {
                 initialOptions = FaceIndexingOptions(),
                 progress = FaceIndexingProgress(),
                 onDismiss = {},
-                onStart = {}
-            )
+                onStart = {})
         }
     }
 }
@@ -57,8 +56,7 @@ private fun FaceIndexingProgressCardPreview() {
             onPause = {},
             onResume = {},
             onForceStop = {},
-            onReset = {}
-        )
+            onReset = {})
     }
 }
 
@@ -71,8 +69,7 @@ private fun EmptyStateViewPreview() {
             title = "No Content Found",
             description = "Your gallery section is empty. Take some photos to get started!",
             buttonText = "Refresh",
-            onClick = {}
-        )
+            onClick = {})
     }
 }
 
@@ -85,8 +82,7 @@ private fun FloatingGalleryBarPreview() {
             FloatingGalleryBar(
                 selectedTab = GalleryTab.ALL,
                 onTabSelected = {},
-                onClick = { Job() }
-            )
+                onClick = { Job() })
         }
     }
 }
@@ -100,8 +96,7 @@ private fun FloatingGalleryBarRailPreview() {
                 selectedTab = GalleryTab.ALBUMS,
                 onTabSelected = {},
                 isVerticalRail = true,
-                onClick = { Job() }
-            )
+                onClick = { Job() })
         }
     }
 }

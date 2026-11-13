@@ -77,20 +77,26 @@ fun SharedTransitionScope.GalleryBottomBar(
             targetState = selectionMode to layout.useNavigationRail, label = "BottomBarSwap"
         ) { (isSelectionMode, isRail) ->
             if (isSelectionMode) {
-                val selectedMedia = masterMediaList.filter { it.id in selectedMediaIds }
-                DetailFloatingBar(
-                    isFavorite = false,
-                    onActionClick = { action ->
-                        onActionClick(action, selectedMedia)
-                    },
-                    allowedActions = listOfNotNull(
+                val selectedMedia = remember(masterMediaList, selectedMediaIds) {
+                    masterMediaList.filter { it.id in selectedMediaIds }
+                }
+                val allowedActions = remember(selectedMedia) {
+                    listOfNotNull(
                         DetailAction.SHARE,
                         DetailAction.FAVOURITE,
                         DetailAction.DELETE,
                         if (selectedMedia.none { it.isVideo }) {
                             DetailAction.COPY
                         } else null
-                    ),
+                    )
+                }
+
+                DetailFloatingBar(
+                    isFavorite = false,
+                    onActionClick = { action ->
+                        onActionClick(action, selectedMedia)
+                    },
+                    allowedActions = allowedActions,
                     modifier = Modifier.onSizeChanged(onBarSizeChanged)
                 )
             } else if (isMainGallery) {

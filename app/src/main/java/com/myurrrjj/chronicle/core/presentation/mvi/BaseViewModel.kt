@@ -2,6 +2,9 @@ package com.myurrrjj.chronicle.core.presentation.mvi
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.myurrrjj.chronicle.domain.model.GalleryViewMode
+import com.myurrrjj.chronicle.domain.model.MediaAsset
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -48,6 +51,7 @@ abstract class BaseViewModel<Event : ViewEvent, State : ViewState, Effect : View
     protected fun setEffect(builder: () -> Effect) {
         viewModelScope.launch { _effect.send(builder()) }
     }
+
 
 
 

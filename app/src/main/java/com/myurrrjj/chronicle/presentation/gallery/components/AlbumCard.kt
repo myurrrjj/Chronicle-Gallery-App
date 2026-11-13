@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.myurrrjj.chronicle.core.presentation.components.bouncyClick
+import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 import com.myurrrjj.chronicle.presentation.gallery.model.Album
 
 @Composable
@@ -38,14 +39,15 @@ fun SharedTransitionScope.AlbumCard(
 ) {
     val context = LocalContext.current
     val imageRequest = remember(album.coverMedia.uriString, album.coverMedia.id) {
-        ImageRequest.Builder(context).data(album.coverMedia.uriString).size(300)
-            .setParameter("is_thumbnail", true).build()
+        ImageRequest.Builder(context).data(album.coverMedia.uriString).size(ThumbnailSizes.MAX_EDGE)
+            .memoryCacheKey(
+                ThumbnailSizes.cacheKey(album.coverMedia.uriString, ThumbnailSizes.MAX_EDGE)
+            ).setParameter("is_thumbnail", true).build()
     }
 
-    Column(
-        modifier = modifier
-            .bouncyClick { onClick() }
-            .padding(4.dp)) {
+    Column(modifier = modifier
+        .bouncyClick { onClick() }
+        .padding(4.dp)) {
         Box(
             modifier = Modifier
                 .aspectRatio(1f)
@@ -53,19 +55,14 @@ fun SharedTransitionScope.AlbumCard(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
 
 
-
         ) {
             AsyncImage(
                 model = imageRequest,
                 contentDescription = album.name,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-//                    .sharedBounds(
-//                        sharedContentState = rememberSharedContentState(key = "media_${album.coverMedia.id}"),
-//                        animatedVisibilityScope = tabAnimatedVisibilityScope,
-//                        resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(),
-//
-//                        )
+                modifier = Modifier
+                    .fillMaxSize()
+
                     .sharedElement(
                         sharedContentState = rememberSharedContentState(key = "media_local_${album.coverMedia.id}"),
                         animatedVisibilityScope = albumAnimatedVisibilityScope,
@@ -82,12 +79,13 @@ fun SharedTransitionScope.AlbumCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
                 .sharedBounds(
-                sharedContentState = rememberSharedContentState(key = "album_title_${album.name}"),
-                animatedVisibilityScope = albumAnimatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
-            )
+                    sharedContentState = rememberSharedContentState(key = "album_title_${album.name}"),
+                    animatedVisibilityScope = albumAnimatedVisibilityScope,
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
+                )
         )
         Text(
             text = "${album.mediaCount} items",

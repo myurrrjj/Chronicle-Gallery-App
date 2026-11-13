@@ -25,3 +25,5 @@ dependencyResolutionManagement {
 rootProject.name = "Jetpack Compose Gallery App"
 include(":app")
 include(":benchmark")
+include(":baselineprofile")
+include(":baselineprofile1")

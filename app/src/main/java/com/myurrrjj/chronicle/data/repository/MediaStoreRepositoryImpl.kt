@@ -206,5 +206,25 @@ class MediaStoreRepositoryImpl @Inject constructor(
         return@withContext info
     }
 
+
+    override fun observeImageCount(): Flow<Int> = flow {
+        val collection = MediaStore.Files.getContentUri("external")
+        val projection = arrayOf(MediaStore.Files.FileColumns._ID)
+        val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+        val selectionArgs = arrayOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()
+        )
+        val count = contentResolver.query(
+            collection,
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )?.use { cursor ->
+            cursor.count
+        } ?: 0
+        emit(count)
+    }.flowOn(Dispatchers.IO)
+
 }
 

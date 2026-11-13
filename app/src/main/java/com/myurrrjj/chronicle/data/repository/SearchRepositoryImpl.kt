@@ -18,11 +18,11 @@ import javax.inject.Inject
 class SearchRepositoryImpl @Inject constructor(
     private val searchDao: SearchDao
 ) : SearchRepository {
-    @Volatile private var lastSynced:Int?=null
+    @Volatile
+    private var lastSynced: Int? = null
 
     override suspend fun syncSearchIndex(
-        mediaList: List<MediaAsset>,
-        favouriteIds: Set<Long>
+        mediaList: List<MediaAsset>, favouriteIds: Set<Long>
     ): Flow<Float> = flow {
         val sync = 31 * mediaList.hashCode() + favouriteIds.hashCode()
         if (sync == lastSynced) {
@@ -56,15 +56,13 @@ class SearchRepositoryImpl @Inject constructor(
                     if (media.isVideo) append("video mp4 ") else append("photo image ")
                     if (favouriteIds.contains(media.id)) append("favorite favourites ")
 
-                    val dateStr = Instant.ofEpochSecond(media.dateAdded)
-                        .atZone(zoneId)
-                        .format(dateFormatter)
+                    val dateStr =
+                        Instant.ofEpochSecond(media.dateAdded).atZone(zoneId).format(dateFormatter)
                     append(dateStr)
                 }
 
                 SearchIndexEntity(
-                    mediaId = media.id,
-                    terms = searchableTerms.lowercase()
+                    mediaId = media.id, terms = searchableTerms.lowercase()
                 )
             }
 
@@ -81,8 +79,7 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     private fun buildPrefixMatchQuery(raw: String): String {
-        return raw.split(Regex("[^\\p{L}\\p{N}]+"))
-            .filter { it.isNotBlank() }
+        return raw.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
             .joinToString(" ") { "${it}*" }
     }
 

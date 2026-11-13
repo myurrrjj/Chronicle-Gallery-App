@@ -3,18 +3,23 @@ package com.myurrrjj.chronicle.core.util
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.CancellationSignal
+import android.os.OperationCanceledException
 import android.provider.MediaStore
 import android.util.Size
+import androidx.core.graphics.drawable.toDrawable
 import coil.ImageLoader
 import coil.decode.DataSource
 import coil.fetch.DrawableResult
 import coil.fetch.FetchResult
 import coil.fetch.Fetcher
 import coil.request.Options
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import androidx.core.graphics.drawable.toDrawable
 import coil.size.pxOrElse
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 
 class NativeThumbnailFetcher(
     private val uri: Uri,
@@ -24,17 +29,22 @@ class NativeThumbnailFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
-        return withContext(Dispatchers.IO) {
-            runCatching {
+        return withContext(Dispatchers.IO.limitedParallelism(8)) {
+            coroutineContext.ensureActive()
+            val signal = CancellationSignal()
+            val registration = coroutineContext.job.invokeOnCompletion { cause ->
+                if (cause != null) {
+                    signal.cancel()
+                }
+            }
+            try {
                 val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     context.contentResolver.loadThumbnail(
-                        uri,
-                        target,
-                        null
+                        uri, target, signal
                     )
                 } else {
-                    val id = uri.lastPathSegment?.toLongOrNull() ?: throw IllegalArgumentException()
-                    if (isVideo) {
+                    val id = uri.lastPathSegment?.toLongOrNull() ?: return@withContext null
+                    @Suppress("DEPRECATION") if (isVideo) {
                         MediaStore.Video.Thumbnails.getThumbnail(
                             context.contentResolver, id, MediaStore.Video.Thumbnails.MINI_KIND, null
                         )
@@ -48,15 +58,26 @@ class NativeThumbnailFetcher(
                     }
                 }
 
+                coroutineContext.ensureActive()
                 bitmap?.let {
                     DrawableResult(
-                        drawable = bitmap.toDrawable(context.resources),
+                        drawable = it.toDrawable(context.resources),
                         isSampled = true,
                         dataSource = DataSource.DISK
                     )
                 }
 
-            }.getOrNull()
+            } catch (e: OperationCanceledException) {
+                throw CancellationException("Thumbnail load cancelled for $uri", e)
+
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                registration.dispose()
+            }
+
         }
     }
 
@@ -67,14 +88,16 @@ class NativeThumbnailFetcher(
             if (!isThumbnail || data.scheme != "content" || data.authority != MediaStore.AUTHORITY) {
                 return null
             }
-            val w = options.size.width.pxOrElse { MAX_EDGE }.coerceIn(1, MAX_EDGE)
-            val h = options.size.height.pxOrElse { MAX_EDGE }.coerceIn(1,MAX_EDGE)
+            val w = options.size.width.pxOrElse { ThumbnailSizes.MAX_EDGE }.coerceIn(1, ThumbnailSizes.MAX_EDGE)
+            val h = options.size.height.pxOrElse { ThumbnailSizes.MAX_EDGE }.coerceIn(1, ThumbnailSizes.MAX_EDGE)
             return NativeThumbnailFetcher(data, context, data.isVideoUri(), Size(w, h))
 
         }
 
 
     }
-companion object{private const val MAX_EDGE = 512}
+
+
 }
+
 private fun Uri.isVideoUri() = pathSegments.contains("video")

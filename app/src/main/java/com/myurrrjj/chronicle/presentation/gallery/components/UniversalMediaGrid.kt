@@ -13,10 +13,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
 import kotlinx.collections.immutable.ImmutableList
@@ -41,22 +45,42 @@ fun UniversalMediaGrid(
     contentBottomPadding: Dp = 0.dp,
     contentStartPadding: Dp = 0.dp
 ) {
+    val spacing = 2.dp
+    val sidePadding = 2.dp
+    val density = LocalDensity.current
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+    val availableWidthDp = screenWidthDp - (sidePadding * 2) - contentStartPadding
+
+
+    val decodePx = remember(density, availableWidthDp, currentViewMode) {
+        ThumbnailSizes.decodePxForGrid(
+            density = density,
+            availableWidthDp = availableWidthDp,
+            minCellDp = currentViewMode.minCellSizeDp.dp,
+            spacingDp = spacing
+        )
+    }
+
+
+    val isDense = currentViewMode.isDense
+    val isMicroCell = currentViewMode.isMicroCell
+    val transitionActive = !isDense && sharedTransitionScope.isTransitionActive
+
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = currentViewMode.minCellSizeDp.dp),
         contentPadding = PaddingValues(
             top = 8.dp,
-            start = 2.dp + contentStartPadding,
+            start = sidePadding + contentStartPadding,
             bottom = contentBottomPadding,
-            end = 2.dp
+            end = sidePadding
         ),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalArrangement = Arrangement.spacedBy(spacing),
         modifier = modifier
             .fillMaxSize()
             .galleryZoomGesture(
-                currentMode = currentViewMode,
-                onViewModeChanged = onViewModeChanged
+                currentMode = currentViewMode, onViewModeChanged = onViewModeChanged
             )
     ) {
         groupedMedia.forEach { (groupKey, mediaItems) ->
@@ -66,31 +90,38 @@ fun UniversalMediaGrid(
                     span = { GridItemSpan(maxLineSpan) },
                     contentType = "contentType1"
                 ) {
+                    val firstTimestamp = mediaItems.first().dateAdded
+                    val headerText = remember(groupKey, currentViewMode, firstTimestamp) {
+                        currentViewMode.formatHeader(firstTimestamp)
+                    }
                     Text(
-                        text = currentViewMode.formatHeader(mediaItems.first().dateAdded),
+                        text = headerText,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier
                             .padding(horizontal = 14.dp, vertical = 24.dp)
-                            .animateItem()
+                            .then(if (isDense) Modifier else Modifier.animateItem())
                     )
                 }
                 items(
                     count = mediaItems.size,
                     contentType = { index -> if (mediaItems[index].isVideo) "video" else "photo" },
-                    key = { index -> mediaItems[index].id }
-                ) { index ->
+                    key = { index -> mediaItems[index].id }) { index ->
                     val mediaItem = mediaItems[index]
                     val isSelected = selectedMediaIds.contains(mediaItem.id)
 
                     with(sharedTransitionScope) {
                         MediaItemCard(
-                            size = when (currentViewMode) {
-                                GalleryViewMode.DAY -> 400
-                                GalleryViewMode.MONTH -> 150
-                                GalleryViewMode.YEAR -> 20
-                            },
+                            isDense = isDense,
+                            isMicroCell = isMicroCell,
+                            decodePx = decodePx,
+                            transitionActive = transitionActive,
+//                            size = when (currentViewMode) {
+//                                GalleryViewMode.DAY -> 400
+//                                GalleryViewMode.MONTH -> 150
+//                                GalleryViewMode.YEAR -> 20
+//                            },
                             media = mediaItem,
                             isSelected = isSelected,
                             selectionMode = selectionMode,
@@ -110,7 +141,7 @@ fun UniversalMediaGrid(
                             sharedTransitionScope = sharedTransitionScope,
                             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
                             albumAnimatedVisibilityScope = albumAnimatedVisibilityScope,
-                            modifier = Modifier.animateItem()
+                            modifier = if (isDense) Modifier else Modifier.animateItem()
                         )
                     }
                 }

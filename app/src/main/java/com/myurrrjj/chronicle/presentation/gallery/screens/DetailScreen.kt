@@ -114,9 +114,13 @@ import kotlinx.coroutines.delay
 
 import android.app.Activity
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import coil.imageLoader
+import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 
 
 fun Activity.enforceImmersiveMode(enforce: Boolean) {
@@ -205,6 +209,11 @@ fun DetailScreen(
     )
 
     var photoBoxSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val imageLoader = context.imageLoader
+
 
     Box(
         modifier = Modifier
@@ -218,30 +227,51 @@ fun DetailScreen(
             key = { page -> contentState.displayedMediaList[page].id }) { page ->
 
             val media = contentState.displayedMediaList[page]
-            val imageRequest = ImageRequest.Builder(context).crossfade(true).data(media.uriString)
-                .placeholderMemoryCacheKey(media.uriString).build()
+            val imageRequest =remember(media.uriString,screenWidthPx,screenHeightPx)
+            {
+                val cachedKey = ThumbnailSizes.findCachedThumbnailKey(imageLoader,media.uriString)
+
+                ImageRequest.Builder(context)
+                    .crossfade(true)
+                    .data(media.uriString)
+                    .size(screenWidthPx,screenHeightPx)
+                    .placeholderMemoryCacheKey(cachedKey)
+                    .build()
+            }
             val isCurrentPage = pagerState.currentPage == page
             val isTransitionRunning = animatedVisibilityScope.transition.isRunning
             val transitionKey = if (isCurrentPage) "media_${media.id}" else "{ghost_key}"
 
             if (media.isVideo) {
-                val exoPlayer = remember { ExoPlayer.Builder(context).build() }
-                val videoState = rememberVideoPlayerState(player = exoPlayer)
-                DisposableEffect(exoPlayer) {
-                    onDispose { exoPlayer.release() }
-                }
+//                val exoPlayer = remember { ExoPlayer.Builder(context).build() }
+//                val videoState = rememberVideoPlayerState(player = exoPlayer)
+//                DisposableEffect(exoPlayer) {
+//                    onDispose { exoPlayer.release() }
+//                }
 
                 with(sharedTransitionScope) {
+
                     Box(
                         modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center
                     ) {
 
-                        if (!isTransitionRunning) {
+                        var isFirstFrameRendered by remember(media.id){mutableStateOf(false)}
+
+
+                        if (isCurrentPage && !isTransitionRunning) {
+                            val exoplayer = remember(media.id){ ExoPlayer.Builder(context).build() }
+                            val videoState = rememberVideoPlayerState(player = exoplayer)
+                            LaunchedEffect(videoState.value.isFirstFrameRendered) {
+                                isFirstFrameRendered = videoState.value.isFirstFrameRendered
+                            }
+                            DisposableEffect(exoplayer) {
+                                onDispose { exoplayer.release() }
+                            }
                             CustomVideoPlayer(
                                 media = media,
                                 animatedVisibilityScope = animatedVisibilityScope,
-                                isCurrentPage = isCurrentPage,
-                                exoPlayer = exoPlayer,
+                                isCurrentPage = true,
+                                exoPlayer = exoplayer,
                                 isVisible = isUiVisible,
                                 resizeMode = videoResizeMode,
 
@@ -266,7 +296,7 @@ fun DetailScreen(
                             )
                         }
                         val imageAlpha by animateFloatAsState(
-                            targetValue = if (videoState.value.isFirstFrameRendered) 0f else 1f,
+                            targetValue = if (isFirstFrameRendered) 0f else 1f,
                             animationSpec = tween(500),
                             label = "thumbnail_crossfade"
                         )

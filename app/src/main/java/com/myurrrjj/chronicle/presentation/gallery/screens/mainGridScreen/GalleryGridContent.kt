@@ -270,11 +270,9 @@ fun SharedTransitionScope.GalleryGridContent(
                                             key = { index -> contentState.peopleClusters[index].id }
                                         ) { index ->
                                             val cluster = contentState.peopleClusters[index]
-                                            val coverMedia =
-                                                contentState.masterMediaList.find { it.id == cluster.coverMediaId }
                                             PersonClusterCard(
                                                 cluster = cluster,
-                                                coverMedia = coverMedia,
+                                                coverMedia = null,
                                                 onClick = { onEvent(GalleryEvent.OpenPerson(cluster)) },
                                                 personAnimatedVisibilityScope = galleryToDetailScope,
                                                 tabAnimatedVisibilityScope = animatedVisibilityScope,
