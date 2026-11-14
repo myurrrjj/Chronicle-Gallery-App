@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 interface SettingsRepository {
     val settings : Flow<AppSettings>
     suspend fun updateAutoPlayVideos(enabled:Boolean)
+    suspend fun updateVideoSeekSeconds(seconds: Int)
     suspend fun updateDefaultGalleryViewMode(viewMode: GalleryViewMode)
 
     suspend fun setFaceIndexingPaused(paused: Boolean)

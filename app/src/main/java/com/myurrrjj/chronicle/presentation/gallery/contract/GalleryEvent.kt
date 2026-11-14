@@ -39,23 +39,23 @@ sealed class GalleryEvent : ViewEvent {
 
 
     object OpenFaceIndexingSheet : GalleryEvent()
-
     object DismissFaceIndexingSheet : GalleryEvent()
-
     data class StartFaceIndexing(val options: FaceIndexingOptions) : GalleryEvent()
-
     object PauseFaceIndexing : GalleryEvent()
-
     object ResumeFaceIndexing : GalleryEvent()
-
     object ForceStopFaceIndexing : GalleryEvent()
-
     object ResetFaceIndexing : GalleryEvent()
+
+
     object OnSettingsClicked : GalleryEvent()
 
     object OnSearchClicked : GalleryEvent()
 
     data class SetSearchMediaList(val results: List<MediaAsset>) : GalleryEvent()
     object ClearSearchMediaList : GalleryEvent()
+
+    data class UpdateActiveSharedMedia(val mediaId:Long): GalleryEvent()
+
+
 
 }

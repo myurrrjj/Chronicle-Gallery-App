@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.myurrrjj.chronicle.domain.model.AppSettings
 import com.myurrrjj.chronicle.domain.model.FaceIndexingOptions
@@ -22,6 +23,7 @@ class DataStoreSettingsRepositoryImpl @Inject constructor(
 ) : SettingsRepository {
     private object PreferencesKey {
         val AUTO_PLAY_VIDEOS = booleanPreferencesKey("auto_play_videos")
+        val VIDEO_SEEK_SECONDS = intPreferencesKey("video_seek_seconds")
         val DEFAULT_VIEW_MODE = stringPreferencesKey("default_view_mode")
 
         val FACE_INDEXING_PAUSED = booleanPreferencesKey("face_indexing_paused")
@@ -59,6 +61,8 @@ class DataStoreSettingsRepositoryImpl @Inject constructor(
 
         AppSettings(
             autoPlayVideo = autoPlay,
+            videoSeekSeconds = preferences[PreferencesKey.VIDEO_SEEK_SECONDS] ?: 5,
+
             defaultGalleryViewMode = viewMode,
             faceIndexingPaused = preferences[PreferencesKey.FACE_INDEXING_PAUSED]?:false,
             faceIndexingOptions = FaceIndexingOptions(
@@ -72,6 +76,12 @@ class DataStoreSettingsRepositoryImpl @Inject constructor(
     override suspend fun updateAutoPlayVideos(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKey.AUTO_PLAY_VIDEOS] = enabled
+        }
+    }
+
+    override suspend fun updateVideoSeekSeconds(seconds: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKey.VIDEO_SEEK_SECONDS] = seconds
         }
     }
 

@@ -37,10 +37,10 @@ fun GalleryTopBar(
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
-                    text = "Gallery",
+                    text = "Your Chronicles",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground, maxLines = 1
                 )
                 AnimatedVisibility(
                     visible = mediaCount > 0,

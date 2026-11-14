@@ -37,7 +37,7 @@ object ThumbnailSizes {
     }
 
     fun cacheKey(uriString: String, px: Int): String = "thumb:$px:$uriString"
-
+    fun fullCacheKey(uriString: String): String = "full:$uriString"
     fun faceCacheKey(path: String, px: Int): String = "face:$px:$path"
 
     fun findCachedThumbnailKey(

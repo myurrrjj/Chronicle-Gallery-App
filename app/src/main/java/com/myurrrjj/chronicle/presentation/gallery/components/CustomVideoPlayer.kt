@@ -103,6 +103,7 @@ private fun VideoResizeMode.toMedia3ResizeMode(): Int {
 }
 
 data class MediaControlAlignment(
+    val canMoveControls: Boolean,
     val controlPosition: ControlPosition,
     val onControlPositionChanged: (ControlPosition) -> Unit,
     val horizontalBias: Float,
@@ -248,6 +249,8 @@ fun CustomVideoPlayer(
     onVisibilityChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     autoPlay: Boolean = true,
+    seekIncrementSeconds: Int = 5,
+    onNavigateBack: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     isFavorite: Boolean,
     onActionClick: (DetailAction) -> Unit,
@@ -344,12 +347,13 @@ fun CustomVideoPlayer(
                 resizeMode = resizeMode,
                 onResizeModeChanged = onResizeModeChanged,
                 onVisibilityChanged = onVisibilityChanged,
+                seekIncrementSeconds = seekIncrementSeconds,
+                onNavigateBack = onNavigateBack,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 isFavorite = isFavorite,
                 onActionClick = onActionClick,
-                mediaControlAlignment = mediaControlAlignment
-            )
+                mediaControlAlignment = mediaControlAlignment)
         }
     }
 }

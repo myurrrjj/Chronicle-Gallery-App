@@ -42,8 +42,12 @@ fun UniversalMediaGrid(
     tabAnimatedVisibilityScope: AnimatedVisibilityScope,
     albumAnimatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier = Modifier,
+    contentTopPadding: Dp = 8.dp,
     contentBottomPadding: Dp = 0.dp,
-    contentStartPadding: Dp = 0.dp
+    contentStartPadding: Dp = 0.dp,
+    activeSharedMediaId: Long? = null,
+    openedAlbumCoverId: Long? = null
+
 ) {
     val spacing = 2.dp
     val sidePadding = 2.dp
@@ -70,7 +74,7 @@ fun UniversalMediaGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = currentViewMode.minCellSizeDp.dp),
         contentPadding = PaddingValues(
-            top = 8.dp,
+            top = contentTopPadding,
             start = sidePadding + contentStartPadding,
             bottom = contentBottomPadding,
             end = sidePadding
@@ -101,7 +105,7 @@ fun UniversalMediaGrid(
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier
                             .padding(horizontal = 14.dp, vertical = 24.dp)
-                            .then(if (isDense) Modifier else Modifier.animateItem())
+                            .then(if (isMicroCell) Modifier else Modifier.animateItem())
                     )
                 }
                 items(
@@ -110,40 +114,28 @@ fun UniversalMediaGrid(
                     key = { index -> mediaItems[index].id }) { index ->
                     val mediaItem = mediaItems[index]
                     val isSelected = selectedMediaIds.contains(mediaItem.id)
+                    val itemId = mediaItem.id
+                    val isSharedTarget  = itemId == activeSharedMediaId
+                    val isAlbumCoverTarget = itemId == openedAlbumCoverId
 
-                    with(sharedTransitionScope) {
-                        MediaItemCard(
-                            isDense = isDense,
-                            isMicroCell = isMicroCell,
-                            decodePx = decodePx,
-                            transitionActive = transitionActive,
-//                            size = when (currentViewMode) {
-//                                GalleryViewMode.DAY -> 400
-//                                GalleryViewMode.MONTH -> 150
-//                                GalleryViewMode.YEAR -> 20
-//                            },
-                            media = mediaItem,
-                            isSelected = isSelected,
-                            selectionMode = selectionMode,
-                            onClick = {
-                                if (selectionMode) {
-                                    onToggleSelection(mediaItem.id)
-                                } else {
-                                    onMediaClick(mediaItem.id)
-                                }
-                            },
-                            onLongClick = {
-                                if (!selectionMode) {
-                                    onEnterSelectionMode()
-                                    onToggleSelection(mediaItem.id)
-                                }
-                            },
-                            sharedTransitionScope = sharedTransitionScope,
-                            tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
-                            albumAnimatedVisibilityScope = albumAnimatedVisibilityScope,
-                            modifier = if (isDense) Modifier else Modifier.animateItem()
-                        )
-                    }
+                    MediaItemCard(
+                        isDense = isDense,
+                        isMicroCell = isMicroCell,
+                        decodePx = decodePx,
+                        transitionActive = transitionActive && (isSharedTarget || isAlbumCoverTarget),
+                        media = mediaItem,
+                        isSelected = isSelected,
+                        selectionMode = selectionMode,
+                        onEnterSelectionMode = onEnterSelectionMode,
+                        sharedTransitionScope = sharedTransitionScope,
+                        tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
+                        albumAnimatedVisibilityScope = albumAnimatedVisibilityScope,
+                        modifier = if (isMicroCell) Modifier else Modifier.animateItem(),
+                        isAlbumCoverTarget = isAlbumCoverTarget,
+                        isSharedTarget = isSharedTarget,
+                        onMediaClick = onMediaClick,
+                        onToggleSelection = onToggleSelection,
+                    )
                 }
             }
         }

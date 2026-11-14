@@ -113,6 +113,7 @@ baselineProfile {
 
 dependencies {
     implementation("com.davemorrissey.labs:subsampling-scale-image-view-androidx:3.10.0")
+//    implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.profileinstaller)
     baselineProfile(project(":baselineprofile1"))
     implementation("androidx.core:core-ktx:1.12.0")

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -57,7 +56,8 @@ fun SharedTransitionScope.GalleryGridContent(
     galleryToDetailScope: AnimatedContentScope,
     animatedVisibilityScope: AnimatedContentScope,
     contentBottomPadding: Dp = 0.dp,
-    contentStartPadding: Dp = 0.dp
+    contentStartPadding: Dp = 0.dp,
+    contentTopPadding: Dp
 ) {
     val contentState = (state).contentState
     val configState = (state).configState
@@ -116,7 +116,8 @@ fun SharedTransitionScope.GalleryGridContent(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                                    .padding(top = contentTopPadding),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Surface(
@@ -219,7 +220,7 @@ fun SharedTransitionScope.GalleryGridContent(
                                         state = gridState,
                                         columns = GridCells.Adaptive(minSize = 150.dp),
                                         contentPadding = PaddingValues(
-                                            top = 8.dp,
+                                            top = contentTopPadding,
                                             start = 2.dp + contentStartPadding,
                                             end = 2.dp,
                                             bottom = contentBottomPadding
@@ -304,8 +305,10 @@ fun SharedTransitionScope.GalleryGridContent(
                                         albumAnimatedVisibilityScope = galleryToDetailScope,
                                         modifier = Modifier.weight(1f),
                                         contentBottomPadding = contentBottomPadding,
-                                        contentStartPadding = contentStartPadding
-                                    )
+                                        contentStartPadding = contentStartPadding,
+                                        activeSharedMediaId = interactionState.activeSharedMediaId,
+                                        openedAlbumCoverId = interactionState.openedAlbum?.coverMedia?.id,
+                                                contentTopPadding = if (tab == GalleryTab.OTHERS) 8.dp else contentTopPadding                                    )
                                 }
                             }
                         }

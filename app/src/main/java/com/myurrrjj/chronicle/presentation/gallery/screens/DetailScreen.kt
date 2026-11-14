@@ -1,7 +1,9 @@
 package com.myurrrjj.chronicle.presentation.gallery.screens
 
+
+import android.app.Activity
 import android.content.pm.ActivityInfo
-import android.content.res.Configuration
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -16,6 +18,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -32,6 +35,7 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -43,9 +47,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Pause
@@ -64,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -81,17 +89,23 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
+import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 import com.myurrrjj.chronicle.presentation.gallery.GalleryViewModel
 import com.myurrrjj.chronicle.presentation.gallery.components.ControlPosition
 import com.myurrrjj.chronicle.presentation.gallery.components.CustomVideoPlayer
@@ -110,17 +124,7 @@ import com.myurrrjj.chronicle.presentation.gallery.components.rememberVideoPlaye
 import com.myurrrjj.chronicle.presentation.gallery.components.selectTrack
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
 import kotlinx.coroutines.delay
-
-
-import android.app.Activity
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import coil.imageLoader
-import com.myurrrjj.chronicle.core.util.ThumbnailSizes
+import kotlin.time.Duration.Companion.milliseconds
 
 
 fun Activity.enforceImmersiveMode(enforce: Boolean) {
@@ -167,16 +171,37 @@ fun DetailScreen(
         }
     }
 
+    LaunchedEffect(currentMedia?.id) {
+        currentMedia?.id?.let { id ->
+            viewModel.setEvent(GalleryEvent.UpdateActiveSharedMedia(id))
+        }
+    }
+
     val isFavorite = remember(currentMedia, contentState.favoriteMediaIds) {
         currentMedia?.id?.let { contentState.favoriteMediaIds.contains(it) } ?: false
     }
 
+    val activity = remember(context) { context.findActivity() }
+    LaunchedEffect(activity, isUiVisible) {
+        activity?.enforceImmersiveMode(!isUiVisible)
+    }
+    DisposableEffect(activity) {
+        onDispose {
+            activity?.enforceImmersiveMode(false)
+        }
+    }
+
     var controlPosition by remember { mutableStateOf(ControlPosition.BOTTOM) }
     val configuration = LocalConfiguration.current
-    val videoIsLandscape = configuration.screenWidthDp>configuration.screenHeightDp
+    val videoIsLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val canMoveControls = configuration.screenWidthDp > 400
 
-    LaunchedEffect(videoIsLandscape) {
-        controlPosition = if (!videoIsLandscape) ControlPosition.BOTTOM else ControlPosition.RIGHT
+    LaunchedEffect(canMoveControls) {
+        controlPosition = if (!canMoveControls) {
+            ControlPosition.BOTTOM
+        } else {
+            ControlPosition.RIGHT
+        }
     }
 
     val horizontalBias by animateFloatAsState(
@@ -185,7 +210,7 @@ fun DetailScreen(
             ControlPosition.RIGHT -> 1f
             ControlPosition.BOTTOM -> 0f
         }, animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow
+            dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow,
         ), label = "horizontalBias"
     )
     val verticalBias = 1f
@@ -205,6 +230,7 @@ fun DetailScreen(
         cutoutStart = cutoutStart,
         cutoutEnd = cutoutEnd,
         videoIsLandscape = videoIsLandscape,
+        canMoveControls = canMoveControls,
         isPagerSwiping = isPagerSwiping
     )
 
@@ -227,16 +253,23 @@ fun DetailScreen(
             key = { page -> contentState.displayedMediaList[page].id }) { page ->
 
             val media = contentState.displayedMediaList[page]
-            val imageRequest =remember(media.uriString,screenWidthPx,screenHeightPx)
-            {
-                val cachedKey = ThumbnailSizes.findCachedThumbnailKey(imageLoader,media.uriString)
+            val imageRequest = remember(media.uriString, screenWidthPx, screenHeightPx) {
+                val cachedKey = ThumbnailSizes.findCachedThumbnailKey(imageLoader, media.uriString)
+                val fullKey = ThumbnailSizes.fullCacheKey(media.uriString)
 
-                ImageRequest.Builder(context)
-                    .crossfade(true)
-                    .data(media.uriString)
-                    .size(screenWidthPx,screenHeightPx)
-                    .placeholderMemoryCacheKey(cachedKey)
-                    .build()
+
+                ImageRequest.Builder(context).crossfade(true).data(media.uriString).apply {
+                    if (media.isVideo) {
+                        size(ThumbnailSizes.MAX_EDGE)
+                        setParameter("is_thumbnail", true)
+                        if (cachedKey != null) {
+                            memoryCacheKey(cachedKey)
+                        }
+                    } else {
+                        size(screenWidthPx, screenHeightPx)
+                        memoryCacheKey(fullKey)
+                    }
+                }.placeholderMemoryCacheKey(cachedKey).build()
             }
             val isCurrentPage = pagerState.currentPage == page
             val isTransitionRunning = animatedVisibilityScope.transition.isRunning
@@ -255,11 +288,12 @@ fun DetailScreen(
                         modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center
                     ) {
 
-                        var isFirstFrameRendered by remember(media.id){mutableStateOf(false)}
+                        var isFirstFrameRendered by remember(media.id) { mutableStateOf(false) }
 
 
                         if (isCurrentPage && !isTransitionRunning) {
-                            val exoplayer = remember(media.id){ ExoPlayer.Builder(context).build() }
+                            val exoplayer =
+                                remember(media.id) { ExoPlayer.Builder(context).build() }
                             val videoState = rememberVideoPlayerState(player = exoplayer)
                             LaunchedEffect(videoState.value.isFirstFrameRendered) {
                                 isFirstFrameRendered = videoState.value.isFirstFrameRendered
@@ -292,7 +326,9 @@ fun DetailScreen(
                                         )
                                     }
                                 },
-                                mediaControlAlignment = mediaControlAlignment
+                                mediaControlAlignment = mediaControlAlignment,
+                                seekIncrementSeconds = configState.videoSeekSeconds,
+                                onNavigateBack = onNavigateBack
                             )
                         }
                         val imageAlpha by animateFloatAsState(
@@ -342,7 +378,7 @@ fun DetailScreen(
                                 uriString = media.uriString,
                                 contentDescription = media.name,
                                 onTap = { offset ->
-                                    val tappedPosition = if (videoIsLandscape) {
+                                    val tappedPosition = if (canMoveControls) {
                                         if (offset.x < photoBoxSize.width / 2) ControlPosition.LEFT else ControlPosition.RIGHT
                                     } else {
                                         ControlPosition.BOTTOM
@@ -361,6 +397,7 @@ fun DetailScreen(
                                     .fillMaxSize()
                                     .zIndex(1f)
                             )
+
                         }
                     }
                 }
@@ -420,6 +457,8 @@ fun VideoPlayerOverlay(
     resizeMode: VideoResizeMode,
     onResizeModeChanged: (VideoResizeMode) -> Unit,
     onVisibilityChanged: (Boolean) -> Unit,
+    seekIncrementSeconds: Int,
+    onNavigateBack: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isFavorite: Boolean,
@@ -428,19 +467,28 @@ fun VideoPlayerOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val activity = remember { context.findActivity() }
-    DisposableEffect(Unit) {
-        activity?.enforceImmersiveMode(true)
-        onDispose {
-            activity?.enforceImmersiveMode(false)
-        }
-    }
+    val activity = remember(context) { context.findActivity() }
+
     var isDragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
-
     var activePanel by remember { mutableStateOf(OverlayPanel.NONE) }
 
-    LaunchedEffect(isVisible) { if (!isVisible) activePanel = OverlayPanel.NONE }
+    var accumulatedSeekSeconds by remember { mutableIntStateOf(0) }
+    var seekTapSequence by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(isVisible) {
+        if (!isVisible) {
+            activePanel = OverlayPanel.NONE
+            accumulatedSeekSeconds = 0
+        }
+    }
+
+    LaunchedEffect(seekTapSequence) {
+        if (seekTapSequence > 0) {
+            delay(900L)
+            accumulatedSeekSeconds = 0
+        }
+    }
 
     val currentProgress = if (state.duration > 0) {
         (state.currentPosition.toFloat() / state.duration.toFloat()).coerceIn(0f, 1f)
@@ -457,6 +505,7 @@ fun VideoPlayerOverlay(
     val cutoutStart = mediaControlAlignment.cutoutStart
     val cutoutEnd = mediaControlAlignment.cutoutEnd
     val videoIsLandscape = mediaControlAlignment.videoIsLandscape
+    val canMoveControlsHorizontally = mediaControlAlignment.canMoveControls
     val isPagerSwiping = mediaControlAlignment.isPagerSwiping
 
     LaunchedEffect(
@@ -464,7 +513,8 @@ fun VideoPlayerOverlay(
         state.isPlaying,
         isDragging,
         activePanel,
-        controlPosition
+        controlPosition,
+        seekTapSequence
     ) {
         if (isVisible && state.isPlaying && !isDragging && activePanel == OverlayPanel.NONE) {
             delay(3000L)
@@ -472,12 +522,29 @@ fun VideoPlayerOverlay(
         }
     }
 
+    fun performSeek(deltaSeconds: Int) {
+        val duration = state.duration.coerceAtLeast(0L)
+        val rawTarget = player.currentPosition + (deltaSeconds * 1000L)
+        val clampedTarget = if (duration > 0L) rawTarget.coerceIn(0L, duration) else rawTarget.coerceAtLeast(0L)
+        player.seekTo(clampedTarget)
+
+        accumulatedSeekSeconds = if (
+            (deltaSeconds > 0 && accumulatedSeekSeconds < 0) ||
+            (deltaSeconds < 0 && accumulatedSeekSeconds > 0)
+        ) {
+            deltaSeconds
+        } else {
+            accumulatedSeekSeconds + deltaSeconds
+        }
+        seekTapSequence++
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(isVisible, videoIsLandscape) {
+            .pointerInput(isVisible, canMoveControlsHorizontally) {
                 detectTapGestures(onTap = { offset ->
-                    val tappedPosition = if (videoIsLandscape) {
+                    val tappedPosition = if (canMoveControlsHorizontally) {
                         if (offset.x < size.width / 2) ControlPosition.LEFT else ControlPosition.RIGHT
                     } else {
                         ControlPosition.BOTTOM
@@ -495,7 +562,6 @@ fun VideoPlayerOverlay(
                     }
                 })
             }
-
     ) {
         AnimatedVisibility(
             visible = isVisible,
@@ -531,358 +597,487 @@ fun VideoPlayerOverlay(
                             start = 12.dp,
                             end = 12.dp
                         )
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
-                        .animateContentSize(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        )
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                        .align(BiasAlignment(horizontalBias, verticalBias))
+                        .align(BiasAlignment(horizontalBias, verticalBias)),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-
-                    AnimatedVisibility(
-                        visible = activePanel != OverlayPanel.NONE,
-                        enter = expandVertically() + fadeIn(tween(150)),
-                        exit = shrinkOut() + fadeOut(tween(150))
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f))
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            when (activePanel) {
-                                OverlayPanel.TRACKS -> {
-                                    if (state.subtitleTracks.isNotEmpty()) {
-                                        Text(
-                                            text = "Subtitles",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            OptionPill(
-                                                label = "Off",
-                                                selected = !subtitlesOn,
-                                                onClick = {
-                                                    disableTrackType(player, C.TRACK_TYPE_TEXT)
-                                                }
-                                            )
-                                            state.subtitleTracks.forEachIndexed { index, label ->
-                                                OptionPill(
-                                                    label = label,
-                                                    selected = index == state.selectedSubtitleTrack,
-                                                    onClick = {
-                                                        selectTrack(player, C.TRACK_TYPE_TEXT, index)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    if (state.audioTracks.isNotEmpty()) {
-                                        Text(
-                                            text = "Audio Track",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            state.audioTracks.forEachIndexed { index, label ->
-                                                OptionPill(
-                                                    label = label,
-                                                    selected = index == state.selectedAudioTrack,
-                                                    onClick = {
-                                                        selectTrack(player, C.TRACK_TYPE_AUDIO, index)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                OverlayPanel.SPEED -> {
-                                    Text(
-                                        text = "Playback Speed",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    val speeds = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        speeds.forEach { speed ->
-                                            OptionPill(
-                                                label = "${speed}x",
-                                                selected = speed == state.playbackSpeed,
-                                                onClick = {
-                                                    player.playbackParameters = PlaybackParameters(speed)
-                                                    activePanel = OverlayPanel.NONE
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                OverlayPanel.NONE -> Unit
-                            }
-                        }
-                    }
-
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        PlayerControlSurface(
+                            onClick = onNavigateBack,
+                            modifier = Modifier.size(44.dp),
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                            contentDescription = "Back"
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val isSeekingBackward = accumulatedSeekSeconds < 0
                             PlayerControlSurface(
-                                onClick = { if (state.isPlaying) player.pause() else player.play() },
-                                modifier = Modifier.size(46.dp),
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentDescription = if (state.isPlaying) "Pause" else "Play"
+                                onClick = { performSeek(-seekIncrementSeconds) },
+                                modifier = Modifier.height(44.dp),
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = if (isSeekingBackward) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+                                },
+                                contentDescription = "Seek backward $seekIncrementSeconds seconds"
                             ) {
-                                Icon(
-                                    imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    contentDescription = "Play/Pause Button",
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                                val contentTint = if (isSeekingBackward) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.FastRewind,
+                                        contentDescription = null,
+                                        tint = contentTint,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    val displayBackward = if (isSeekingBackward) {
+                                        accumulatedSeekSeconds
+                                    } else {
+                                        -seekIncrementSeconds
+                                    }
+                                    AnimatedContent(
+                                        targetState = displayBackward,
+                                        transitionSpec = {
+                                            (slideInVertically { h -> -h } + fadeIn(tween(120))) togetherWith
+                                                    (slideOutVertically { h -> h } + fadeOut(tween(120)))
+                                        },
+                                        label = "seekBackwardCounter"
+                                    ) { value ->
+                                        Text(
+                                            text = "${value}s",
+                                            color = contentTint,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
 
-                            val hasTracks = state.audioTracks.isNotEmpty() || state.subtitleTracks.isNotEmpty()
-                            if (hasTracks) {
-                                val isTracksMenuOpened = activePanel == OverlayPanel.TRACKS
+                            val isSeekingForward = accumulatedSeekSeconds > 0
+                            PlayerControlSurface(
+                                onClick = { performSeek(seekIncrementSeconds) },
+                                modifier = Modifier.height(44.dp),
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = if (isSeekingForward) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+                                },
+                                contentDescription = "Seek forward $seekIncrementSeconds seconds"
+                            ) {
+                                val contentTint = if (isSeekingForward) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val displayForward = if (isSeekingForward) {
+                                        accumulatedSeekSeconds
+                                    } else {
+                                        seekIncrementSeconds
+                                    }
+                                    AnimatedContent(
+                                        targetState = displayForward,
+                                        transitionSpec = {
+                                            (slideInVertically { h -> h } + fadeIn(tween(120))) togetherWith
+                                                    (slideOutVertically { h -> -h } + fadeOut(tween(120)))
+                                        },
+                                        label = "seekForwardCounter"
+                                    ) { value ->
+                                        Text(
+                                            text = "+${value}s",
+                                            color = contentTint,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Rounded.FastForward,
+                                        contentDescription = null,
+                                        tint = contentTint,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+                            .animateContentSize(
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        AnimatedVisibility(
+                            visible = activePanel != OverlayPanel.NONE,
+                            enter = expandVertically() + fadeIn(tween(150)),
+                            exit = shrinkOut() + fadeOut(tween(150))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                when (activePanel) {
+                                    OverlayPanel.TRACKS -> {
+                                        if (state.subtitleTracks.isNotEmpty()) {
+                                            Text(
+                                                text = "Subtitles",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                OptionPill(
+                                                    label = "Off",
+                                                    selected = !subtitlesOn,
+                                                    onClick = {
+                                                        disableTrackType(player, C.TRACK_TYPE_TEXT)
+                                                    }
+                                                )
+                                                state.subtitleTracks.forEachIndexed { index, label ->
+                                                    OptionPill(
+                                                        label = label,
+                                                        selected = index == state.selectedSubtitleTrack,
+                                                        onClick = {
+                                                            selectTrack(player, C.TRACK_TYPE_TEXT, index)
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (state.audioTracks.isNotEmpty()) {
+                                            Text(
+                                                text = "Audio Track",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                state.audioTracks.forEachIndexed { index, label ->
+                                                    OptionPill(
+                                                        label = label,
+                                                        selected = index == state.selectedAudioTrack,
+                                                        onClick = {
+                                                            selectTrack(player, C.TRACK_TYPE_AUDIO, index)
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    OverlayPanel.SPEED -> {
+                                        Text(
+                                            text = "Playback Speed",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        val speeds = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            speeds.forEach { speed ->
+                                                OptionPill(
+                                                    label = "${speed}x",
+                                                    selected = speed == state.playbackSpeed,
+                                                    onClick = {
+                                                        player.playbackParameters = PlaybackParameters(speed)
+                                                        activePanel = OverlayPanel.NONE
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    OverlayPanel.NONE -> Unit
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                PlayerControlSurface(
+                                    onClick = { if (state.isPlaying) player.pause() else player.play() },
+                                    modifier = Modifier.size(46.dp),
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentDescription = if (state.isPlaying) "Pause" else "Play"
+                                ) {
+                                    Icon(
+                                        imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                        contentDescription = "Play/Pause Button",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+
+                                val hasTracks = state.audioTracks.isNotEmpty() || state.subtitleTracks.isNotEmpty()
+                                if (hasTracks) {
+                                    val isTracksMenuOpened = activePanel == OverlayPanel.TRACKS
+                                    PlayerControlSurface(
+                                        onClick = {
+                                            activePanel = if (isTracksMenuOpened) OverlayPanel.NONE else OverlayPanel.TRACKS
+                                        },
+                                        modifier = Modifier.height(44.dp),
+                                        shape = RoundedCornerShape(22.dp),
+                                        containerColor = when {
+                                            isTracksMenuOpened -> MaterialTheme.colorScheme.primary
+                                            subtitlesOn -> MaterialTheme.colorScheme.primaryContainer
+                                            else -> MaterialTheme.colorScheme.surfaceVariant
+                                        },
+                                        contentDescription = "Audio & Subtitles"
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val iconTint = when {
+                                                isTracksMenuOpened -> MaterialTheme.colorScheme.onPrimary
+                                                subtitlesOn -> MaterialTheme.colorScheme.onPrimaryContainer
+                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                            if (state.subtitleTracks.isNotEmpty()) {
+                                                Icon(
+                                                    imageVector = if (subtitlesOn) Icons.Rounded.Subtitles else Icons.Rounded.SubtitlesOff,
+                                                    contentDescription = "Subtitles",
+                                                    tint = iconTint,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            if (state.audioTracks.isNotEmpty()) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Audiotrack,
+                                                    contentDescription = "Audio",
+                                                    tint = iconTint,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val isSpeedOpen = activePanel == OverlayPanel.SPEED
+
                                 PlayerControlSurface(
                                     onClick = {
-                                        activePanel = if (isTracksMenuOpened) OverlayPanel.NONE else OverlayPanel.TRACKS
+                                        activePanel = if (isSpeedOpen) OverlayPanel.NONE else OverlayPanel.SPEED
                                     },
                                     modifier = Modifier.height(44.dp),
                                     shape = RoundedCornerShape(22.dp),
-                                    containerColor = when {
-                                        isTracksMenuOpened -> MaterialTheme.colorScheme.primary
-                                        subtitlesOn -> MaterialTheme.colorScheme.primaryContainer
-                                        else -> MaterialTheme.colorScheme.surfaceVariant
+                                    containerColor = if (isSpeedOpen || state.playbackSpeed != 1f) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
                                     },
-                                    contentDescription = "Audio & Subtitles"
+                                    contentDescription = "Playback speed"
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 12.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        val iconTint = when {
-                                            isTracksMenuOpened -> MaterialTheme.colorScheme.onPrimary
-                                            subtitlesOn -> MaterialTheme.colorScheme.onPrimaryContainer
-                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        val speedTint = if (isSpeedOpen || state.playbackSpeed != 1f) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
                                         }
-                                        if (state.subtitleTracks.isNotEmpty()) {
-                                            Icon(
-                                                imageVector = if (subtitlesOn) Icons.Rounded.Subtitles else Icons.Rounded.SubtitlesOff,
-                                                contentDescription = "Subtitles",
-                                                tint = iconTint,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                        if (state.audioTracks.isNotEmpty()) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Audiotrack,
-                                                contentDescription = "Audio",
-                                                tint = iconTint,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Rounded.Speed,
+                                            contentDescription = "Playback Speed",
+                                            tint = speedTint,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${state.playbackSpeed}x",
+                                            color = speedTint,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
+                                }
+
+                                PlayerControlSurface(
+                                    onClick = { onResizeModeChanged(resizeMode.next()) },
+                                    modifier = Modifier.height(44.dp),
+                                    shape = RoundedCornerShape(22.dp),
+                                    containerColor = if (resizeMode != VideoResizeMode.FIT) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    },
+                                    contentDescription = "Toggle video crop mode"
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val cropTint = if (resizeMode != VideoResizeMode.FIT) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                        Icon(
+                                            imageVector = Icons.Rounded.AspectRatio,
+                                            contentDescription = null,
+                                            tint = cropTint,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = resizeMode.buttonLabel,
+                                            color = cropTint,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                PlayerControlSurface(
+                                    onClick = {
+                                        activity?.requestedOrientation = if (!videoIsLandscape) {
+                                            ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+                                        } else {
+                                            ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+                                        }
+                                    },
+                                    modifier = Modifier.size(44.dp),
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentDescription = "Fullscreen"
+                                ) {
+                                    Icon(
+                                        imageVector = if (videoIsLandscape) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                        contentDescription = "Fullscreen",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
                                 }
                             }
                         }
+
+                        Spacer(Modifier.height(6.dp))
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val isSpeedOpen = activePanel == OverlayPanel.SPEED
-
-                            PlayerControlSurface(
-                                onClick = {
-                                    activePanel = if (isSpeedOpen) OverlayPanel.NONE else OverlayPanel.SPEED
+                            Text(
+                                text = formatVideoTime(
+                                    if (isDragging) (dragProgress * state.duration).toLong() else state.currentPosition
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Slider(
+                                value = sliderValue,
+                                onValueChange = { newValue ->
+                                    isDragging = true
+                                    dragProgress = newValue
                                 },
-                                modifier = Modifier.height(44.dp),
-                                shape = RoundedCornerShape(22.dp),
-                                containerColor = if (isSpeedOpen || state.playbackSpeed != 1f) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
+                                onValueChangeFinished = {
+                                    isDragging = false
+                                    player.seekTo((dragProgress * state.duration).toLong())
                                 },
-                                contentDescription = "Playback speed"
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val speedTint = if (isSpeedOpen || state.playbackSpeed != 1f) {
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                    Icon(
-                                        imageVector = Icons.Rounded.Speed,
-                                        contentDescription = "Playback Speed",
-                                        tint = speedTint,
-                                        modifier = Modifier.size(17.dp)
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                        alpha = 0.35f
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "${state.playbackSpeed}x",
-                                        color = speedTint,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            PlayerControlSurface(
-                                onClick = { onResizeModeChanged(resizeMode.next()) },
-                                modifier = Modifier.height(44.dp),
-                                shape = RoundedCornerShape(22.dp),
-                                containerColor = if (resizeMode != VideoResizeMode.FIT) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                },
-                                contentDescription = "Toggle video crop mode"
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val cropTint = if (resizeMode != VideoResizeMode.FIT) {
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                    Icon(
-                                        imageVector = Icons.Rounded.AspectRatio,
-                                        contentDescription = null,
-                                        tint = cropTint,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = resizeMode.buttonLabel,
-                                        color = cropTint,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            PlayerControlSurface(
-                                onClick = {
-                                    activity?.requestedOrientation = if (!videoIsLandscape) {
-                                        ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
-                                    } else {
-                                        ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
-                                    }
-                                },
-                                modifier = Modifier.size(44.dp),
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentDescription = "Fullscreen"
-                            ) {
-                                Icon(
-                                    imageVector = if (videoIsLandscape) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                    contentDescription = "Fullscreen",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(30.dp)
+                            )
+                            Text(
+                                text = formatVideoTime(state.duration),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
-                    }
 
-                    Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(4.dp))
 
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = formatVideoTime(
-                                if (isDragging) (dragProgress * state.duration).toLong() else state.currentPosition
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Slider(
-                            value = sliderValue,
-                            onValueChange = { newValue ->
-                                isDragging = true
-                                dragProgress = newValue
-                            },
-                            onValueChangeFinished = {
-                                isDragging = false
-                                player.seekTo((dragProgress * state.duration).toLong())
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                    alpha = 0.35f
-                                )
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(30.dp)
-                        )
-                        Text(
-                            text = formatVideoTime(state.duration),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-
-
-                    with(sharedTransitionScope) {
-                        DetailFloatingBar(
-                            isFavorite = isFavorite,
-                            onActionClick = onActionClick,
-                            showContainer = false,
-                            modifier = Modifier.sharedBounds(
-                                sharedContentState = rememberSharedContentState(key = "floating_navigation_bar"),
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                                zIndexInOverlay = 1f
-                            ),
-                            allowedActions = DetailAction.entries.filter { it != DetailAction.COPY }
-                        )
+                        with(sharedTransitionScope) {
+                            DetailFloatingBar(
+                                isFavorite = isFavorite,
+                                onActionClick = onActionClick,
+                                showContainer = false,
+                                modifier = Modifier.sharedBounds(
+                                    sharedContentState = rememberSharedContentState(key = "floating_navigation_bar"),
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                                    zIndexInOverlay = 1f
+                                ),
+                                allowedActions = DetailAction.entries.filter { it != DetailAction.COPY }
+                            )
+                        }
                     }
                 }
             }
@@ -892,19 +1087,14 @@ fun VideoPlayerOverlay(
 
 @Composable
 private fun OptionPill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
+    label: String, selected: Boolean, onClick: () -> Unit
 ) {
     PlayerControlSurface(
-        onClick = onClick,
-        shape = CircleShape,
-        containerColor = if (selected) {
+        onClick = onClick, shape = CircleShape, containerColor = if (selected) {
             MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-        },
-        modifier = Modifier.heightIn(min = 34.dp)
+        }, modifier = Modifier.heightIn(min = 34.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),

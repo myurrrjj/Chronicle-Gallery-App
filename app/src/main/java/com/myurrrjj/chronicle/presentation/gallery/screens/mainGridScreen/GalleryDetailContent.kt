@@ -26,7 +26,10 @@ fun SharedTransitionScope.GalleryDetailContent(
     onEvent: (GalleryEvent) -> Unit,
     galleryToDetailScope: AnimatedContentScope,
     tabAnimatedVisibilityScope: AnimatedContentScope,
-    contentBottomPadding: Dp = 0.dp
+    contentBottomPadding: Dp = 0.dp,
+    activeSharedMediaId: Long? = null,
+    openedAlbumCoverId: Long? = null,
+    contentTopPadding: Dp
 
 ) {
     if (target.album != null) {
@@ -37,7 +40,7 @@ fun SharedTransitionScope.GalleryDetailContent(
             currentViewMode = currentViewMode,
             onBackClick = { onEvent(GalleryEvent.CloseAlbum) },
             onMediaClick = { id -> onEvent(GalleryEvent.MediaClicked(id)) },
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = contentTopPadding),
             selectedMediaIds = selectedMediaIds,
             onToggleSelection = { mediaId ->
                 onEvent(GalleryEvent.ToggleMediaSelection(mediaId))
@@ -51,6 +54,8 @@ fun SharedTransitionScope.GalleryDetailContent(
             albumAnimatedVisibilityScope = galleryToDetailScope,
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             contentBottomPadding = contentBottomPadding,
+            activeSharedMediaId = activeSharedMediaId,
+//            openedAlbumCoverId = interactionState.openedAlbum?.coverMedia?.id
 
         )
     } else if (target.person != null) {
@@ -64,7 +69,7 @@ fun SharedTransitionScope.GalleryDetailContent(
                 onEvent(GalleryEvent.UpdatePersonName(id, name))
             },
             onMediaClick = { id -> onEvent(GalleryEvent.MediaClicked(id)) },
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = contentTopPadding),
             selectedMediaIds = selectedMediaIds,
             onToggleSelection = { mediaId ->
                 onEvent(GalleryEvent.ToggleMediaSelection(mediaId))
@@ -76,6 +81,7 @@ fun SharedTransitionScope.GalleryDetailContent(
             personAnimatedVisibilityScope = galleryToDetailScope,
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             contentBottomPadding = contentBottomPadding,
+            activeSharedMediaId = activeSharedMediaId
 
         )
     }

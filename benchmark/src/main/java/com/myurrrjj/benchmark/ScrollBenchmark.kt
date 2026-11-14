@@ -1,6 +1,7 @@
 package com.myurrrjj.benchmark
 
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.ExperimentalMetricApi
@@ -23,6 +24,9 @@ private const val TAG = "GalleryBenchmark"
 private const val FIND_TIMEOUT_MS = 5_000L
 private const val MAX_GESTURE_ATTEMPTS = 3
 private const val SWIPE_STEPS = 20
+private const val FLING_STEPS = 4
+private const val FLING_CHAIN_DELAY_MS = 60L
+private const val REGROUP_SETTLE_MS = 350L
 
 private const val PINCH_PERCENT = 0.55f
 private const val PINCH_SPEED_PX_PER_SEC = 2500
@@ -62,6 +66,8 @@ private fun MacrobenchmarkScope.pinch(open: Boolean) {
                 }
             }
             waitForUi()
+            SystemClock.sleep(REGROUP_SETTLE_MS)
+            waitForUi()
             return
         } catch (e: StaleObjectException) {
             lastError = e
@@ -91,6 +97,19 @@ private fun MacrobenchmarkScope.scrollVerticalCycle(upSwipes: Int, downSwipes: I
         device.swipe(centerX, topY, centerX, bottomY, SWIPE_STEPS)
         waitForUi()
     }
+}
+
+private fun MacrobenchmarkScope.sustainedFling(up: Boolean, bursts: Int) {
+    galleryNode()
+    val centerX = device.displayWidth / 2
+    val startY = if (up) (device.displayHeight * 0.78f).toInt() else (device.displayHeight * 0.22f).toInt()
+    val endY = if (up) (device.displayHeight * 0.22f).toInt() else (device.displayHeight * 0.78f).toInt()
+
+    repeat(bursts) {
+        device.swipe(centerX, startY, centerX, endY, FLING_STEPS)
+        SystemClock.sleep(FLING_CHAIN_DELAY_MS)
+    }
+    device.waitForIdle(2_000L)
 }
 
 @RunWith(AndroidJUnit4::class)
@@ -195,5 +214,54 @@ class GalleryCombinedPerformanceBenchmark {
         }
     ) {
         scrollVerticalCycle(5, 5)
+    }
+
+    @OptIn(ExperimentalMetricApi::class)
+    @Test
+    fun sustainedFlingYearUp() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = listOf(
+            FrameTimingMetric(),
+            MemoryUsageMetric(mode = MemoryUsageMetric.Mode.Max)
+        ),
+        compilationMode = CompilationMode.Partial(),
+        startupMode = null,
+        iterations = 5,
+        setupBlock = {
+            killProcess()
+            pressHome()
+            grantMediaPermissions()
+            startActivityAndWait()
+            waitForUi()
+            pinch(open = false)
+            pinch(open = false)
+        }
+    ) {
+        sustainedFling(up = true, bursts = 8)
+        sustainedFling(up = false, bursts = 8)
+    }
+
+    @OptIn(ExperimentalMetricApi::class)
+    @Test
+    fun sustainedFlingMonthUp() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = listOf(
+            FrameTimingMetric(),
+            MemoryUsageMetric(mode = MemoryUsageMetric.Mode.Max)
+        ),
+        compilationMode = CompilationMode.Partial(),
+        startupMode = null,
+        iterations = 5,
+        setupBlock = {
+            killProcess()
+            pressHome()
+            grantMediaPermissions()
+            startActivityAndWait()
+            waitForUi()
+            pinch(open = false)
+        }
+    ) {
+        sustainedFling(up = true, bursts = 8)
+        sustainedFling(up = false, bursts = 8)
     }
 }

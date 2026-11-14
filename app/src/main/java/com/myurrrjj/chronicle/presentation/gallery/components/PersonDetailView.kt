@@ -2,6 +2,7 @@ package com.myurrrjj.chronicle.presentation.gallery.components
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Edit
@@ -39,6 +41,7 @@ import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.persistentSetOf
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SharedTransitionScope.PersonDetailView(
     cluster: PersonCluster,
@@ -57,12 +60,15 @@ fun SharedTransitionScope.PersonDetailView(
     onMediaClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
     contentBottomPadding: Dp = 0.dp,
+    activeSharedMediaId: Long? =null,
 
     ) {
     var showEditDialog by remember { mutableStateOf(false) }
     var editNameValue by remember(cluster.name) { mutableStateOf(cluster.name) }
-    val gridState = rememberLazyGridState()
-
+    val gridCacheWindow = remember {
+        LazyLayoutCacheWindow(aheadFraction = 0.25f, behindFraction = 0.10f)
+    }
+    val gridState = rememberLazyGridState(cacheWindow = gridCacheWindow)
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
@@ -146,7 +152,7 @@ fun SharedTransitionScope.PersonDetailView(
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             albumAnimatedVisibilityScope = personAnimatedVisibilityScope,
             modifier = Modifier.weight(1f),
-            contentBottomPadding=contentBottomPadding
+            contentBottomPadding=contentBottomPadding, activeSharedMediaId = activeSharedMediaId
 
         )
     }

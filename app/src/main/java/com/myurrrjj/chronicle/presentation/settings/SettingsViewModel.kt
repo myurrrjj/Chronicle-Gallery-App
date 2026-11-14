@@ -31,6 +31,11 @@ class SettingsViewModel @Inject constructor(
                     settingsRepository.updateAutoPlayVideos(event.isEnabled)
                 }
             }
+            is SettingsEvent.ChangeVideoSeekSeconds -> {
+                viewModelScope.launch {
+                    settingsRepository.updateVideoSeekSeconds(event.seconds)
+                }
+            }
             is SettingsEvent.ChangeDefaultViewMode -> {
                 viewModelScope.launch {
                     settingsRepository.updateDefaultGalleryViewMode(event.viewMode)

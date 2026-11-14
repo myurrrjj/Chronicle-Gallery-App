@@ -17,6 +17,8 @@ data class SettingsState(
 
 sealed class SettingsEvent : ViewEvent {
     data class ToggleAutoPlay(val isEnabled: Boolean) : SettingsEvent()
+    data class ChangeVideoSeekSeconds(val seconds: Int) : SettingsEvent()
+
     data class ChangeDefaultViewMode(val viewMode: GalleryViewMode) : SettingsEvent()
     object CloseSettings : SettingsEvent()
 

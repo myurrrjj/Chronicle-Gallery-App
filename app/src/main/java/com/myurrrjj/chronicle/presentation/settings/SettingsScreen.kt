@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.ViewDay
 import androidx.compose.material3.Button
@@ -108,6 +109,19 @@ fun SettingsScreen(
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 viewModel.setEvent(SettingsEvent.ToggleAutoPlay(enabled))
             }),
+            SettingItem.SegmentedOptions(
+                title = "Video Seek Duration",
+                subtitle = "Seconds skipped when tapping seek buttons in the video player",
+                icon = Icons.Rounded.FastForward,
+                options = listOf(5, 10, 15, 30),
+                selectedOption = state.appSettings.videoSeekSeconds,
+                onOptionSelected = { seconds ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.setEvent(SettingsEvent.ChangeVideoSeekSeconds(seconds))
+                },
+                optionLabel = { "${it}s" }
+            ),
+
             SettingItem.SegmentedOptions(
                 title = "Default View Mode",
                 subtitle = "Choose how your gallery grid looks when the app opens",

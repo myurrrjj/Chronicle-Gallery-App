@@ -35,7 +35,7 @@ enum class GalleryViewMode(
     }
 
     fun getGroupingKey(timestampSeconds: Long,zoneId: ZoneId = ZoneId.systemDefault()): String {
-        val date = Instant.ofEpochSecond(timestampSeconds).atZone(ZoneId.systemDefault())
+        val date = Instant.ofEpochSecond(timestampSeconds).atZone(zoneId)
         return date.format(
             when (this) {
                 DAY -> KEY_DAY

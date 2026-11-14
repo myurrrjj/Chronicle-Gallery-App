@@ -21,6 +21,8 @@ ksp = "2.3.12"
 hilt = "2.57.2"
 baselineprofile = "1.4.1"
 profileinstaller = "1.4.1"
+runner = "1.7.0"
+animation = "1.12.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -47,6 +49,8 @@ androidx-datastore-core = { group = "androidx.datastore", name = "datastore-core
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmarkMacroJunit4" }
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
+androidx-runner = { group = "androidx.test", name = "runner", version.ref = "runner" }
+androidx-compose-animation = { group = "androidx.compose.animation", name = "animation", version.ref = "animation" }
 
 
 [plugins]

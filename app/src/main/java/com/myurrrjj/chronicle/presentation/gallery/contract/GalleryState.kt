@@ -22,7 +22,8 @@ data class GalleryUiConfig(
     val error: String? = null,
     val hasPermission: Boolean = false,
     val currentViewMode: GalleryViewMode = GalleryViewMode.DAY,
-    val autoPlayVideo: Boolean = true
+    val autoPlayVideo: Boolean = true,val videoSeekSeconds: Int = 5
+
 )
 
 data class MediaContentState(
@@ -42,6 +43,7 @@ data class InteractionState(
     val openedPersonCluster: PersonCluster? = null,
     val selectionMode: Boolean = false,
     val selectedMediaIds: ImmutableSet<Long> = persistentSetOf()
+    ,val activeSharedMediaId : Long? = null
 )
 
 data class GalleryState(

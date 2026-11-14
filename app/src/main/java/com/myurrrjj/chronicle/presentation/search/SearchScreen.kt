@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -39,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -180,7 +183,7 @@ private fun IndexingOverlay(progress: Float) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ActiveSearchContent(
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -189,13 +192,15 @@ private fun ActiveSearchContent(
     onNavigateBack: () -> Unit,
     sharedTransitionScope: SharedTransitionScope
 ) {
-    val gridState = rememberLazyGridState()
-
+    val gridCacheWindow = remember {
+        LazyLayoutCacheWindow(aheadFraction = 0.25f, behindFraction = 0.10f)
+    }
+    val gridState = rememberLazyGridState(cacheWindow = gridCacheWindow)
     Column(modifier = Modifier.fillMaxSize()) {
         SearchBar(
             query = state.query,
             onQueryChange = { onEvent(SearchEvent.OnQueryChanged(it)) },
-            onSearch = { /* Handled automatically by the debounce flow */ },
+            onSearch = {  },
             active = true,
             onActiveChange = { if (!it) onNavigateBack() },
             placeholder = { Text("Search photos, videos, dates...") },

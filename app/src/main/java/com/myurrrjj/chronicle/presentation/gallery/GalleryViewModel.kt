@@ -75,6 +75,7 @@ class GalleryViewModel @Inject constructor(
                     copy(
                         configState = configState.copy(
                             currentViewMode = targetMode,
+                            videoSeekSeconds = settings.videoSeekSeconds,
                             autoPlayVideo = settings.autoPlayVideo
                         ),
                         faceIndexingOptions = settings.faceIndexingOptions
@@ -276,6 +277,18 @@ class GalleryViewModel @Inject constructor(
             GalleryEvent.ClearSearchMediaList -> {
                 regroupWithFilter(viewMode = uiState.value.configState.currentViewMode) {
                     resolveTabMediaList(uiState.value)
+                }
+            }
+
+           is GalleryEvent.UpdateActiveSharedMedia -> {
+                if (uiState.value.interactionState.activeSharedMediaId != event.mediaId){
+                    setState {
+                        copy(
+                            interactionState = interactionState.copy(
+                                activeSharedMediaId = event.mediaId
+                            )
+                        )
+                    }
                 }
             }
 
@@ -588,7 +601,15 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
+
     private fun navigateToDetail(mediaId: Long) {
+
+        setState {
+            copy(interactionState = interactionState.copy(
+                activeSharedMediaId = mediaId
+            ))
+        }
+
         setEffect { GalleryEffect.NavigateToDetail(mediaId) }
     }
 
