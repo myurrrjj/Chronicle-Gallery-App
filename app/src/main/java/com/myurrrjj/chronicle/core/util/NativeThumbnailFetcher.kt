@@ -2,6 +2,9 @@ package com.myurrrjj.chronicle.core.util
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
@@ -29,7 +32,6 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
-import kotlin.coroutines.resume
 
 private class LifoSemaphore(private val maxPermits: Int) {
     private val lock = Any()
@@ -53,13 +55,19 @@ private class LifoSemaphore(private val maxPermits: Int) {
             }
         }
         suspendCancellableCoroutine { cont ->
-            synchronized(lock) {
+            val acquiredImmediately = synchronized(lock) {
                 if (availablePermits > 0) {
                     availablePermits--
-                    cont.resume(Unit)
-                    return@suspendCancellableCoroutine
+                    true
+                } else {
+                    waiters.addLast(cont)
+                    false
                 }
-                waiters.addLast(cont)
+            }
+            if (acquiredImmediately) {
+                @Suppress("DEPRECATION")
+                cont.resume(Unit) { release() }
+                return@suspendCancellableCoroutine
             }
             cont.invokeOnCancellation {
                 synchronized(lock) {
@@ -82,7 +90,8 @@ private class LifoSemaphore(private val maxPermits: Int) {
                 candidate
             }
             if (next.isActive) {
-                next.resume(Unit)
+                @Suppress("DEPRECATION")
+                next.resume(Unit) { release() }
                 return
             }
         }
@@ -93,7 +102,8 @@ class NativeThumbnailFetcher(
     private val uri: Uri,
     private val context: Context,
     private val isVideo: Boolean,
-    private val target: Size
+    private val target: Size,
+    private val useRgb565: Boolean
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
@@ -140,7 +150,7 @@ class NativeThumbnailFetcher(
 
             coroutineContext.ensureActive()
 
-            val finalBitmap = normalizeBitmapSize(rawBitmap, target.width, target.height)
+            val finalBitmap = normalizeBitmapSize(rawBitmap, target.width, target.height, useRgb565)
 
             return DrawableResult(
                 drawable = finalBitmap.toDrawable(context.resources),
@@ -159,26 +169,49 @@ class NativeThumbnailFetcher(
     }
 
     private fun normalizeBitmapSize(
-        source: Bitmap, targetW: Int, targetH: Int
+        source: Bitmap,
+        targetW: Int,
+        targetH: Int,
+        useRgb565: Boolean
     ): Bitmap {
         val srcW = source.width
         val srcH = source.height
         if (srcW <= 0 || srcH <= 0) return source
-        val targetShortEdge = minOf(targetW, targetH)
-        val srcShortEdge = minOf(srcW, srcH)
-        if (srcShortEdge <= targetShortEdge) return source
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && source.config == Bitmap.Config.HARDWARE) {
             return source
         }
-        val scale = targetShortEdge.toFloat() / srcShortEdge.toFloat()
-        val dstW = (srcW * scale).toInt().coerceAtLeast(1)
-        val dstH = (srcH * scale).toInt().coerceAtLeast(1)
+
+        val targetShortEdge = minOf(targetW, targetH)
+        val srcShortEdge = minOf(srcW, srcH)
+        val dstW: Int
+        val dstH: Int
+        if (srcShortEdge > targetShortEdge) {
+            val scale = targetShortEdge.toFloat() / srcShortEdge.toFloat()
+            dstW = (srcW * scale).toInt().coerceAtLeast(1)
+            dstH = (srcH * scale).toInt().coerceAtLeast(1)
+        } else {
+            dstW = srcW
+            dstH = srcH
+        }
+
+        val needsResize = dstW != srcW || dstH != srcH
+        val needs565 = useRgb565 && source.config != Bitmap.Config.RGB_565
+        if (!needsResize && !needs565) return source
+
         return runCatching {
-            val scaled = source.scale(dstW, dstH)
-            if (scaled !== source) {
+            if (useRgb565) {
+                val out = Bitmap.createBitmap(dstW, dstH, Bitmap.Config.RGB_565)
+                val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+                Canvas(out).drawBitmap(source, null, Rect(0, 0, dstW, dstH), paint)
                 source.recycle()
+                out
+            } else {
+                val scaled = source.scale(dstW, dstH)
+                if (scaled !== source) {
+                    source.recycle()
+                }
+                scaled
             }
-            scaled
         }.getOrDefault(source)
     }
 
@@ -193,7 +226,8 @@ class NativeThumbnailFetcher(
                 .coerceIn(1, ThumbnailSizes.MAX_EDGE)
             val h = options.size.height.pxOrElse { ThumbnailSizes.MAX_EDGE }
                 .coerceIn(1, ThumbnailSizes.MAX_EDGE)
-            return NativeThumbnailFetcher(data, context, data.isVideoUri(), Size(w, h))
+            val useRgb565 = options.config == Bitmap.Config.RGB_565
+            return NativeThumbnailFetcher(data, context, data.isVideoUri(), Size(w, h), useRgb565)
         }
     }
 
@@ -217,89 +251,3 @@ class NativeThumbnailFetcher(
 }
 
 private fun Uri.isVideoUri() = pathSegments.contains("video")
-
-
-//class NativeThumbnailFetcher(
-//    private val uri: Uri,
-//    private val context: Context,
-//    private val isVideo: Boolean,
-//    private val target: Size
-//) : Fetcher {
-//
-//    companion object {private val THUMBNAIL_FETCHER = Dispatchers.IO.limitedParallelism(8) }
-//
-//
-//    override suspend fun fetch(): FetchResult? {
-//        return withContext(THUMBNAIL_FETCHER) {
-//            coroutineContext.ensureActive()
-//            val signal = CancellationSignal()
-//            val registration = coroutineContext.job.invokeOnCompletion { cause ->
-//                if (cause != null) {
-//                    signal.cancel()
-//                }
-//            }
-//            try {
-//                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-//                    context.contentResolver.loadThumbnail(
-//                        uri, target, signal
-//                    )
-//                } else {
-//                    val id = uri.lastPathSegment?.toLongOrNull() ?: return@withContext null
-//                    @Suppress("DEPRECATION") if (isVideo) {
-//                        MediaStore.Video.Thumbnails.getThumbnail(
-//                            context.contentResolver, id, MediaStore.Video.Thumbnails.MINI_KIND, null
-//                        )
-//                    } else {
-//                        MediaStore.Images.Thumbnails.getThumbnail(
-//                            context.contentResolver,
-//                            id,
-//                            MediaStore.Images.Thumbnails.MINI_KIND,
-//                            null
-//                        )
-//                    }
-//                }
-//
-//                coroutineContext.ensureActive()
-//                bitmap?.let {
-//                    DrawableResult(
-//                        drawable = it.toDrawable(context.resources),
-//                        isSampled = true,
-//                        dataSource = DataSource.DISK
-//                    )
-//                }
-//
-//            } catch (e: OperationCanceledException) {
-//                throw CancellationException("Thumbnail load cancelled for $uri", e)
-//
-//            } catch (e: CancellationException) {
-//                throw e
-//            } catch (_: Exception) {
-//                null
-//            } finally {
-//                registration.dispose()
-//            }
-//
-//        }
-//    }
-//
-//    class Factory(private val context: Context) : Fetcher.Factory<Uri> {
-//        override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
-//            val isThumbnail = options.parameters.value("is_thumbnail") as? Boolean ?: false
-//
-//            if (!isThumbnail || data.scheme != "content" || data.authority != MediaStore.AUTHORITY) {
-//                return null
-//            }
-//            val w = options.size.width.pxOrElse { ThumbnailSizes.MAX_EDGE }.coerceIn(1, ThumbnailSizes.MAX_EDGE)
-//            val h = options.size.height.pxOrElse { ThumbnailSizes.MAX_EDGE }.coerceIn(1, ThumbnailSizes.MAX_EDGE)
-//            return NativeThumbnailFetcher(data, context, data.isVideoUri(), Size(w, h))
-//
-//        }
-//
-//
-//    }
-//
-//
-//}
-//
-//
-//private fun Uri.isVideoUri() = pathSegments.contains("video")

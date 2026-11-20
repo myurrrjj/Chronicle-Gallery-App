@@ -55,8 +55,8 @@ fun SharedTransitionScope.GalleryDetailContent(
             tabAnimatedVisibilityScope = tabAnimatedVisibilityScope,
             contentBottomPadding = contentBottomPadding,
             activeSharedMediaId = activeSharedMediaId,
-//            openedAlbumCoverId = interactionState.openedAlbum?.coverMedia?.id
 
+//            openedAlbumCoverId = openedAlbumCoverId ?: target.album.coverMedia?.id
         )
     } else if (target.person != null) {
         PersonDetailView(

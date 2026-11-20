@@ -194,7 +194,7 @@ fun DetailScreen(
     var controlPosition by remember { mutableStateOf(ControlPosition.BOTTOM) }
     val configuration = LocalConfiguration.current
     val videoIsLandscape = configuration.screenWidthDp > configuration.screenHeightDp
-    val canMoveControls = configuration.screenWidthDp > 400
+    val canMoveControls = configuration.screenWidthDp > 500
 
     LaunchedEffect(canMoveControls) {
         controlPosition = if (!canMoveControls) {

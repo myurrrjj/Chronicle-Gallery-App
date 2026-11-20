@@ -10,9 +10,9 @@ enum class GalleryViewMode(
 
     DAY(minCellSizeDp = 120, zoomThreshold = 1.5f),
 
-    MONTH(minCellSizeDp = 70, zoomThreshold = 1.0f),
+    MONTH(minCellSizeDp = 80, zoomThreshold = 1.0f),
 
-    YEAR(minCellSizeDp = 40, zoomThreshold = 0.5f);
+    YEAR(minCellSizeDp = 50, zoomThreshold = 0.5f);
 
 
     val isDense: Boolean
@@ -34,15 +34,37 @@ enum class GalleryViewMode(
 
     }
 
-    fun getGroupingKey(timestampSeconds: Long,zoneId: ZoneId = ZoneId.systemDefault()): String {
+    fun getGroupingKey(
+        timestampSeconds: Long,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
         val date = Instant.ofEpochSecond(timestampSeconds).atZone(zoneId)
-        return date.format(
-            when (this) {
-                DAY -> KEY_DAY
-                MONTH -> KEY_MONTH
-                YEAR -> KEY_YEAR
+        val y = date.year
+        return when (this) {
+            DAY -> {
+                val m = date.monthValue
+                val d = date.dayOfMonth
+                buildString(10) {
+                    append(y)
+                    append('-')
+                    if (m < 10) append('0')
+                    append(m)
+                    append('-')
+                    if (d < 10) append('0')
+                    append(d)
+                }
             }
-        )
+            MONTH -> {
+                val m = date.monthValue
+                buildString(7) {
+                    append(y)
+                    append('-')
+                    if (m < 10) append('0')
+                    append(m)
+                }
+            }
+            YEAR -> y.toString()
+        }
     }
 
     private companion object {

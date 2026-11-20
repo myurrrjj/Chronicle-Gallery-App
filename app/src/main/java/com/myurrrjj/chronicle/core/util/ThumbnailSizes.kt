@@ -36,7 +36,11 @@ object ThumbnailSizes {
         else -> MAX_EDGE
     }
 
-    fun cacheKey(uriString: String, px: Int): String = "thumb:$px:$uriString"
+
+
+    fun cacheKey(uriString: String, px: Int, rgb565: Boolean = false): String =
+        if (rgb565) "thumb565:$px:$uriString" else "thumb:$px:$uriString"
+
     fun fullCacheKey(uriString: String): String = "full:$uriString"
     fun faceCacheKey(path: String, px: Int): String = "face:$px:$path"
 
@@ -46,7 +50,13 @@ object ThumbnailSizes {
     ): MemoryCache.Key? {
         val memoryCache = imageLoader.memoryCache ?: return null
         for (bucket in BUCKETS_DESC) {
-            val candidate = MemoryCache.Key(cacheKey(uriString, bucket))
+            val candidate = MemoryCache.Key(cacheKey(uriString, bucket, rgb565 = false))
+            if (memoryCache[candidate] != null) {
+                return candidate
+            }
+        }
+        for (bucket in BUCKETS_DESC) {
+            val candidate = MemoryCache.Key(cacheKey(uriString, bucket, rgb565 = true))
             if (memoryCache[candidate] != null) {
                 return candidate
             }

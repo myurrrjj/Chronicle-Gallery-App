@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 abstract class BaseViewModel<Event : ViewEvent, State : ViewState, Effect : ViewSideEffect> :
@@ -46,7 +47,7 @@ abstract class BaseViewModel<Event : ViewEvent, State : ViewState, Effect : View
 
     }
     protected fun setState(reduce:State.()->State){
-     _uiState.value = uiState.value.reduce()
+     _uiState.update {it.reduce()}
     }
     protected fun setEffect(builder: () -> Effect) {
         viewModelScope.launch { _effect.send(builder()) }

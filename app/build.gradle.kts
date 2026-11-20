@@ -151,7 +151,7 @@ dependencies {
     implementation("com.github.haifengl:smile-core:3.0.2")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    "baselineProfile"(project(":baselineprofile1"))
+//    "baselineProfile"(project(":baselineprofile1"))
     val room_version = "2.8.5"
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

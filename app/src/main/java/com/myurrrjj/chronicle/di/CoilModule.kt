@@ -22,7 +22,7 @@ object CoilModule {
     fun provideImageLoader(@ApplicationContext context: Context): ImageLoader {
         return ImageLoader.Builder(context).components {
                 add(NativeThumbnailFetcher.Factory(context))
-                add(VideoFrameDecoder.Factory())
+//                add(VideoFrameDecoder.Factory())
             }.memoryCache {
                 MemoryCache.Builder(context).maxSizePercent(.25).build()
             }.diskCache {

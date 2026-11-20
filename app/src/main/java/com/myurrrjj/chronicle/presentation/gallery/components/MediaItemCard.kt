@@ -1,5 +1,6 @@
 package com.myurrrjj.chronicle.presentation.gallery.components
 
+import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -67,27 +68,19 @@ fun MediaItemCard(
 ) {
     val context = LocalContext.current
     val mediaId = media.id
-    val imageRequest = remember(media.uriString, decodePx, isSharedTarget, transitionActive) {
-        val thumbKey = ThumbnailSizes.cacheKey(media.uriString, decodePx)
+    val imageRequest = remember(media.uriString, decodePx, isSharedTarget, isMicroCell) {
+        val thumbKey = ThumbnailSizes.cacheKey(media.uriString, decodePx, rgb565 = isMicroCell)
         val fullKey = if (isSharedTarget) ThumbnailSizes.fullCacheKey(media.uriString) else null
         val hasFullInCache =
             fullKey != null && context.imageLoader.memoryCache?.get(MemoryCache.Key(fullKey)) != null
 
-
-
         if (hasFullInCache) {
-            ImageRequest.Builder(context)
-                .data(media.uriString)
-                .memoryCacheKey(fullKey)
-                .placeholderMemoryCacheKey(thumbKey)
-                .build()
+            ImageRequest.Builder(context).data(media.uriString).memoryCacheKey(fullKey)
+                .placeholderMemoryCacheKey(thumbKey).build()
         } else {
-            ImageRequest.Builder(context)
-                .data(media.uriString)
-                .size(decodePx)
-                .memoryCacheKey(thumbKey)
-                .setParameter("is_thumbnail", true)
-                .build()
+            ImageRequest.Builder(context).data(media.uriString).size(decodePx)
+                .bitmapConfig(if (isMicroCell) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888)
+                .memoryCacheKey(thumbKey).setParameter("is_thumbnail", true).build()
         }
     }
 
@@ -117,9 +110,7 @@ fun MediaItemCard(
             }
         }
 
-    val indication = if (!isMicroCell) null else LocalIndication.current
-
-
+    val indication = if (isMicroCell) null else LocalIndication.current
 
     with(sharedTransitionScope) {
         Box(
@@ -127,7 +118,6 @@ fun MediaItemCard(
                 .aspectRatio(1f)
                 .then(if (transitionActive) Modifier.zIndex(1f) else Modifier)
                 .then(if (isMicroCell) Modifier else Modifier.clip(CardCornerShape))
-
                 .combinedClickable(
                     interactionSource = null,
                     indication = indication,
@@ -170,14 +160,12 @@ fun MediaItemCard(
                 }
             }
 
-
             Image(
                 painter = painter,
                 contentDescription = media.name,
                 contentScale = ContentScale.Crop,
                 modifier = imageModifier
             )
-
 
             if (media.isVideo) {
                 if (!isMicroCell) {
