@@ -4,6 +4,8 @@ import android.content.Context
 import com.myurrrjj.chronicle.data.local.GalleryDatabase
 import com.myurrrjj.chronicle.data.local.dao.FaceDao
 import com.myurrrjj.chronicle.data.local.dao.FavouriteDao
+import com.myurrrjj.chronicle.data.local.dao.LocationDao
+//import com.myurrrjj.chronicle.data.local.dao.LocationDao
 import com.myurrrjj.chronicle.data.local.dao.SearchDao
 //import com.example.jetpackcomposegalleryapp.data.local.dao.MediaDao
 import dagger.Module
@@ -40,5 +42,11 @@ object DatabaseModule {
     @Singleton
     fun provideSearchDao(database: GalleryDatabase): SearchDao {
         return database.searchDao
+    }
+
+    @Provides
+    @Singleton
+    fun provideLocationDao(database: GalleryDatabase): LocationDao {
+        return database.locationDao
     }
 }
