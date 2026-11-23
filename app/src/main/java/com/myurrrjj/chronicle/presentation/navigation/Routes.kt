@@ -16,4 +16,7 @@ sealed interface Route {
 
     @Serializable
     data object Search: Route
+
+    @Serializable
+    data object PhotoMap : Route
 }

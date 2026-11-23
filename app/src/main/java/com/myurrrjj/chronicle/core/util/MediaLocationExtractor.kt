@@ -29,7 +29,7 @@ class MediaLocationExtractor @Inject constructor(
 
     fun extract(uriString: String, isVideo: Boolean): ExtractedCoordinates? {
         val rawUri = uriString.toUri()
-        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val uri = if (!isVideo && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             runCatching { MediaStore.setRequireOriginal(rawUri) }.getOrDefault(rawUri)
         } else {
             rawUri
@@ -48,8 +48,8 @@ class MediaLocationExtractor @Inject constructor(
 
     private fun extractPhotoCoords(uri: Uri): Pair<Double, Double>? {
         return runCatching {
-            contentResolver.openInputStream(uri)?.use { stream ->
-                val exif = ExifInterface(stream)
+            contentResolver.openFileDescriptor(uri,"r")?.use { pfd ->
+                val exif = ExifInterface(pfd.fileDescriptor)
                 val latLong = exif.latLong ?: return@use null
                 latLong[0] to latLong[1]
             }
@@ -71,8 +71,9 @@ class MediaLocationExtractor @Inject constructor(
     }
 
     companion object {
-        private val ISO_6709_REGEX = Regex("""([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)""")
-
+        private val ISO_6709_REGEX = Regex(
+            """^([+-]\d{1,3}(?:\.\d+)?)([+-]\d{1,3}(?:\.\d+)?)(?:[+-]\d+(?:\.\d+)?)?/?$"""
+        )
         fun parseIso6709(raw: String): Pair<Double, Double>? {
             val match = ISO_6709_REGEX.find(raw.trim()) ?: return null
             val lat = match.groupValues[1].toDoubleOrNull() ?: return null

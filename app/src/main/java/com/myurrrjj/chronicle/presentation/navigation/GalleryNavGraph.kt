@@ -33,6 +33,7 @@ import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEffect
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
 import com.myurrrjj.chronicle.presentation.gallery.screens.mainGridScreen.GalleryScreen
 import com.myurrrjj.chronicle.presentation.gallery.GalleryViewModel
+import com.myurrrjj.chronicle.presentation.map.PhotoMapScreen
 import com.myurrrjj.chronicle.presentation.navigation.Route.Detail
 import com.myurrrjj.chronicle.presentation.navigation.Route.DirtyTest
 import com.myurrrjj.chronicle.presentation.navigation.Route.Gallery
@@ -112,6 +113,8 @@ fun GalleryNavGraph() {
 
                 GalleryEffect.NavigateToSettings -> navController.navigate(Settings)
                 GalleryEffect.NavigateToSearch -> navController.navigate(Route.Search)
+                GalleryEffect.NavigateToPhotoMap -> navController.navigate(Route.PhotoMap)
+
             }
         }
 
@@ -189,6 +192,13 @@ fun GalleryNavGraph() {
                     galleryViewModel = sharedViewModel
                 )
             }
+            composable<Route.PhotoMap> {
+                PhotoMapScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onPhotoClick = { mediaId -> navController.navigate(Detail(mediaId)) }
+                )
+            }
+
         }
     }
 }

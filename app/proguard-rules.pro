@@ -76,3 +76,11 @@
 
 -dontwarn javax.annotation.**
 -dontwarn org.jetbrains.annotations.**
+
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_face.** { *; }
+-keep class com.google.android.gms.vision.** { *; }
+-dontwarn com.google.mlkit.**
+
+-keep class org.maplibre.** { *; }
+-dontwarn org.maplibre.**

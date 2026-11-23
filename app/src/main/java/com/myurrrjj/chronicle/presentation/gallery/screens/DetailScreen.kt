@@ -172,10 +172,12 @@ fun DetailScreen(
     }
 
     LaunchedEffect(currentMedia?.id) {
-        currentMedia?.id?.let { id ->
-            viewModel.setEvent(GalleryEvent.UpdateActiveSharedMedia(id))
+        currentMedia?.let { media ->
+            viewModel.setEvent(GalleryEvent.UpdateActiveSharedMedia(media.id))
+            viewModel.setEvent(GalleryEvent.PrefetchMediaDetails(media))
         }
     }
+
 
     val isFavorite = remember(currentMedia, contentState.favoriteMediaIds) {
         currentMedia?.id?.let { contentState.favoriteMediaIds.contains(it) } ?: false
@@ -190,6 +192,10 @@ fun DetailScreen(
             activity?.enforceImmersiveMode(false)
         }
     }
+    DisposableEffect(Unit) {
+        onDispose { viewModel.setEvent(GalleryEvent.ClearPrefetchedDetails) }
+    }
+
 
     var controlPosition by remember { mutableStateOf(ControlPosition.BOTTOM) }
     val configuration = LocalConfiguration.current

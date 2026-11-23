@@ -5,6 +5,7 @@ import com.myurrrjj.chronicle.domain.model.FaceIndexingOptions
 import com.myurrrjj.chronicle.domain.model.FaceIndexingProgress
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
+import com.myurrrjj.chronicle.domain.model.MediaDetailsBundle
 import com.myurrrjj.chronicle.domain.model.PersonCluster
 import com.myurrrjj.chronicle.presentation.gallery.InfoSheetState
 import com.myurrrjj.chronicle.presentation.gallery.model.Album
@@ -53,5 +54,8 @@ data class GalleryState(
     val infoSheetState: InfoSheetState = InfoSheetState.Closed,
     val faceIndexing: FaceIndexingProgress = FaceIndexingProgress(),
     val faceIndexingOptions: FaceIndexingOptions = FaceIndexingOptions(),
-    val showFaceIndexingSheet: Boolean = false
+    val showFaceIndexingSheet: Boolean = false,
+    val prefetchedMediaId: Long? = null,
+    val prefetchedBundle: MediaDetailsBundle? = null
+
 ) : ViewState

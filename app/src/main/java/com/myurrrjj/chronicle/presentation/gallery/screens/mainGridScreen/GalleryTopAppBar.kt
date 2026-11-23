@@ -28,6 +28,7 @@ fun GalleryTopAppBar(
         )
     } else {
         GalleryTopBar(
+            onMapClicked = { onEvent(GalleryEvent.NavigateToPhotoMap) },
             onSearchClick = { onEvent(GalleryEvent.OnSearchClicked) },
             mediaCount = mediaCount,
             scrollBehaviour = scrollBehaviour,

@@ -70,12 +70,7 @@ class FaceEmbedder @Inject constructor(
             val options =
                 Interpreter.Options()
 
-            /*
-             * IMPORTANT:
-             * No GPU delegate.
-             *
-             * The model now runs entirely on CPU.
-             */
+
             options.setNumThreads(numThreads)
 
             interpreter =

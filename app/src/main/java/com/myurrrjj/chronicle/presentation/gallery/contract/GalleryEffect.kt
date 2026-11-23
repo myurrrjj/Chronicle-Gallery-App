@@ -13,4 +13,6 @@ sealed class GalleryEffect : ViewSideEffect {
     data class CopyMedia(val uris: List<String>) : GalleryEffect()
     object NavigateToSettings : GalleryEffect()
     object NavigateToSearch : GalleryEffect()
+    data object NavigateToPhotoMap : GalleryEffect()
+
 }

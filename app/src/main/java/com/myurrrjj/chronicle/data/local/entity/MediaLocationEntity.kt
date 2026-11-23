@@ -4,12 +4,13 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-
 @Entity(
     tableName = "media_location",
-    indices = [Index(value = ["hasLocation", "latitude", "longitude"]), Index(value = ["bucketKey"]), Index(
-        value = ["timestampSec"]
-    )]
+    indices = [
+        Index(value = ["hasLocation", "latitude", "longitude"]),
+        Index(value = ["bucketKey"]),
+        Index(value = ["timestampSec"])
+    ]
 )
 data class MediaLocationEntity(
     @PrimaryKey val mediaId: Long,

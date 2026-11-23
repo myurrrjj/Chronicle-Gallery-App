@@ -14,33 +14,39 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 
+sealed interface GeocodeResult {
+    data class Success(val place: PlaceCacheEntity) : GeocodeResult
+    data object OfflineOrUnavailable : GeocodeResult
+    data object NotFound : GeocodeResult
+
+}
+
+
 @Singleton
-class ReverseGeocoderHelper @Inject constructor(
+class ReverseGeocodeHelper @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
     suspend fun resolveBucket(
-        bucketKey: String,
-        latitude: Double,
-        longitude: Double
-    ): PlaceCacheEntity? {
-        if (!Geocoder.isPresent()) return null
-        val address = fetchAddress(latitude, longitude) ?: return null
+        bucketKey: String, latitude: Double, longitude: Double
+    ): GeocodeResult {
+        if (!Geocoder.isPresent()) return GeocodeResult.OfflineOrUnavailable
+        val address = fetchAddress(latitude, longitude) ?: return GeocodeResult.OfflineOrUnavailable
         val city = address.locality ?: address.subAdminArea ?: address.featureName
         val state = address.adminArea
         val country = address.countryName
-        val displayName = listOfNotNull(city, state ?: country)
-            .distinct()
-            .joinToString(", ")
-            .ifBlank { country ?: return null }
+        val displayName = listOfNotNull(city, state ?: country).distinct().joinToString(", ")
+            .ifBlank { country ?: return GeocodeResult.NotFound }
 
-        return PlaceCacheEntity(
-            bucketKey = bucketKey,
-            city = city,
-            state = state,
-            country = country,
-            displayName = displayName,
-            updatedAtMs = System.currentTimeMillis()
+        return GeocodeResult.Success(
+            PlaceCacheEntity(
+                bucketKey = bucketKey,
+                city = city,
+                state = state,
+                country = country,
+                displayName = displayName,
+                updatedAtMs = System.currentTimeMillis()
+            )
         )
     }
 
@@ -50,10 +56,7 @@ class ReverseGeocoderHelper @Inject constructor(
             suspendCancellableCoroutine { cont ->
                 runCatching {
                     geocoder.getFromLocation(
-                        lat,
-                        lng,
-                        1,
-                        object : Geocoder.GeocodeListener {
+                        lat, lng, 1, object : Geocoder.GeocodeListener {
                             override fun onGeocode(addresses: MutableList<Address>) {
                                 if (cont.isActive) cont.resume(addresses.firstOrNull())
                             }
@@ -61,16 +64,16 @@ class ReverseGeocoderHelper @Inject constructor(
                             override fun onError(errorMessage: String?) {
                                 if (cont.isActive) cont.resume(null)
                             }
-                        }
-                    )
+                        })
                 }.onFailure {
                     if (cont.isActive) cont.resume(null)
                 }
             }
         } else {
             withContext(Dispatchers.IO) {
-                @Suppress("DEPRECATION")
-                runCatching { geocoder.getFromLocation(lat, lng, 1)?.firstOrNull() }.getOrNull()
+                @Suppress("DEPRECATION") runCatching {
+                    geocoder.getFromLocation(lat, lng, 1)?.firstOrNull()
+                }.getOrNull()
             }
         }
     }

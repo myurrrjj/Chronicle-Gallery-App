@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.myurrrjj.chronicle.data.local.entity.MediaLocationEntity
 import com.myurrrjj.chronicle.data.local.entity.PlaceCacheEntity
+import com.myurrrjj.chronicle.domain.model.MediaLocationInfo
 import kotlinx.coroutines.flow.Flow
 
 data class GeotaggedPhotoRow(
@@ -23,6 +24,11 @@ data class LatLngSample(
     val latitude: Double, val longitude: Double
 )
 
+data class IndexedMediaRef(
+    val mediaId:Long,
+    val uriString: String
+)
+
 @Dao
 interface LocationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -30,6 +36,21 @@ interface LocationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPlace(place: PlaceCacheEntity)
+
+    @Query("UPDATE media_location SET uriString = :uriString WHERE mediaId = :mediaId")
+    suspend fun updateUri(mediaId: Long, uriString: String)
+
+    @Query("DELETE FROM media_location WHERE mediaId IN (:mediaIds)")
+    suspend fun deleteByIds(mediaIds: List<Long>)
+
+    @Query("SELECT mediaId, uriString FROM media_location")
+    suspend fun getIndexedMedia(): List<IndexedMediaRef>
+
+    @Query("SELECT COUNT(*) FROM media_location WHERE hasLocation = 0")
+    suspend fun countWithoutLocation(): Int
+
+    @Query("DELETE FROM media_location WHERE hasLocation = 0")
+    suspend fun clearRowsWithoutLocation()
 
     @Query("select mediaId from media_location")
     suspend fun getAllIndexedMediaIds(): List<Long>
@@ -50,6 +71,16 @@ interface LocationDao {
         """
     )
     fun observeAllGeotaggedPhotos(): Flow<List<GeotaggedPhotoRow>>
+
+    @Query("""
+    SELECT m.latitude, m.longitude, p.displayName AS placeName
+    FROM media_location m
+    LEFT JOIN place_cache p ON m.bucketKey = p.bucketKey
+    WHERE m.mediaId = :mediaId AND m.hasLocation = 1
+    LIMIT 1
+""")
+    suspend fun getLocationFor(mediaId: Long): MediaLocationInfo?
+
 
     @Query(
         """
@@ -72,5 +103,12 @@ interface LocationDao {
 
     @Query("delete from media_location where mediaId not in (:existingIds)")
     suspend fun pruneDeletedMedia(existingIds:List<Long>)
+
+
+
+
+
+
+
 
 }

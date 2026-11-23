@@ -3,6 +3,7 @@ package com.myurrrjj.chronicle.presentation.gallery
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.myurrrjj.chronicle.core.indexing.FaceIndexingController
+import com.myurrrjj.chronicle.core.indexing.LocationIndexingController
 import com.myurrrjj.chronicle.core.presentation.mvi.BaseViewModel
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
@@ -45,12 +46,15 @@ class GalleryViewModel @Inject constructor(
     private val faceIndexingController: FaceIndexingController,
     private val settingsRepository: SettingsRepository,
     private val groupMediaUseCase: GroupMediaUseCase,
-    private val getFilteredMediaUseCase: GetFilteredMediaUseCase
+    private val getFilteredMediaUseCase: GetFilteredMediaUseCase,
+    private val locationIndexingController: LocationIndexingController
 ) : BaseViewModel<GalleryEvent, GalleryState, GalleryEffect>() {
     private var isFirstSettingsLoad = true
     private var autoStartChecked = false
 
     private var regroupJob: Job? = null
+    private var prefetchJob: Job? = null
+
 
     init {
         observeFavorites()
@@ -127,10 +131,14 @@ class GalleryViewModel @Inject constructor(
                 event.action, event.mediaList
             )
 
-            is GalleryEvent.OpenInfoSheet -> fetchMediaDetails(event.media)
-            is GalleryEvent.CloseInfoSheet -> {
-                setState { copy(infoSheetState = InfoSheetState.Closed) }
+            is GalleryEvent.OpenInfoSheet -> openInfoSheet(event.media)
+            is GalleryEvent.CloseInfoSheet -> setState { copy(infoSheetState = InfoSheetState.Closed) }
+            is GalleryEvent.PrefetchMediaDetails -> prefetchMediaDetails(event.media)
+            GalleryEvent.ClearPrefetchedDetails -> {
+                prefetchJob?.cancel()
+                setState { copy(prefetchedMediaId = null, prefetchedBundle = null) }
             }
+
 
             is GalleryEvent.OpenAlbum -> {
                 val album = event.album
@@ -291,6 +299,8 @@ class GalleryViewModel @Inject constructor(
                     }
                 }
             }
+            GalleryEvent.NavigateToPhotoMap -> setEffect { GalleryEffect.NavigateToPhotoMap }
+
 
         }
     }
@@ -440,7 +450,7 @@ class GalleryViewModel @Inject constructor(
 
                 DetailAction.INFO -> {
                     if (targetMedia.size == 1) {
-                        fetchMediaDetails(targetMedia.first())
+                        openInfoSheet(targetMedia.first())
                     }
                 }
 
@@ -454,23 +464,47 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
-    private fun fetchMediaDetails(media: MediaAsset) {
-        setState { copy(infoSheetState = InfoSheetState.Loading(media)) }
-        viewModelScope.launch {
-            try {
-                val details = mediaRepository.getMediaDetails(media.uriString, media.isVideo)
-                setState { copy(infoSheetState = InfoSheetState.Success(media, details)) }
-            } catch (e: Exception) {
-                setState {
-                    copy(
-                        infoSheetState = InfoSheetState.Error(
-                            media, e.message ?: "Unknown Error"
-                        )
-                    )
-                }
+    private fun prefetchMediaDetails(media: MediaAsset) {
+        val s = uiState.value
+        if (s.prefetchedMediaId == media.id && s.prefetchedBundle != null) return
+        prefetchJob?.cancel()
+        setState { copy(prefetchedMediaId = media.id, prefetchedBundle = null) }
+        prefetchJob = viewModelScope.launch {
+            val bundle = runCatching {
+                mediaRepository.getMediaDetailsBundle(media.id, media.uriString, media.isVideo)
+            }.getOrNull()
+            if (uiState.value.prefetchedMediaId == media.id) {
+                setState { copy(prefetchedBundle = bundle) }
             }
         }
     }
+
+    private fun openInfoSheet(media: MediaAsset) {
+        val s = uiState.value
+        val cached = s.prefetchedBundle.takeIf { s.prefetchedMediaId == media.id }
+        if (cached != null) {
+            setState { copy(infoSheetState = InfoSheetState.Success(media, cached.details, cached.location)) }
+            return
+        }
+        prefetchJob?.cancel()
+        setState { copy(infoSheetState = InfoSheetState.Loading(media)) }
+        prefetchJob = viewModelScope.launch {
+            runCatching {
+                mediaRepository.getMediaDetailsBundle(media.id, media.uriString, media.isVideo)
+            }.onSuccess { b ->
+                setState {
+                    copy(
+                        infoSheetState = InfoSheetState.Success(media, b.details, b.location),
+                        prefetchedMediaId = media.id,
+                        prefetchedBundle = b
+                    )
+                }
+            }.onFailure { e ->
+                setState { copy(infoSheetState = InfoSheetState.Error(media, e.message ?: "Unknown Error")) }
+            }
+        }
+    }
+
 
     private fun handleTabSelection(tab: GalleryTab) {
         val currentState = uiState.value
@@ -498,7 +532,11 @@ class GalleryViewModel @Inject constructor(
 
     private fun handlePermission(isGranted: Boolean) {
         setState { copy(configState = configState.copy(hasPermission = isGranted)) }
-        if (isGranted) fetchMedia()
+        if (isGranted) {
+            fetchMedia()
+            locationIndexingController.enqueue()
+            locationIndexingController.ensurePeriodicRefresh()
+        }
         else setState {
             copy(
                 configState = configState.copy(

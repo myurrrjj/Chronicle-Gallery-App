@@ -3,13 +3,17 @@ package com.myurrrjj.chronicle.data.repository
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.provider.MediaStore
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.myurrrjj.chronicle.data.local.dao.FavouriteDao
+import com.myurrrjj.chronicle.data.local.dao.LocationDao
 import com.myurrrjj.chronicle.data.local.entity.toFavoriteEntity
 import com.myurrrjj.chronicle.domain.model.DetailedMediaInfo
 import com.myurrrjj.chronicle.domain.model.MediaAsset
+import com.myurrrjj.chronicle.domain.model.MediaDetailsBundle
+import com.myurrrjj.chronicle.domain.model.MediaRef
 import com.myurrrjj.chronicle.domain.repository.MediaRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +25,8 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class MediaStoreRepositoryImpl @Inject constructor(
-    private val contentResolver: ContentResolver, private val favouriteDao: FavouriteDao
+    private val contentResolver: ContentResolver, private val favouriteDao: FavouriteDao,    private val locationDao: LocationDao
+
 ) : MediaRepository {
     override fun getAllMedia(): Flow<List<MediaAsset>> = flow {
         val mediaList = mutableListOf<MediaAsset>()
@@ -105,10 +110,10 @@ class MediaStoreRepositoryImpl @Inject constructor(
 
             }
 
-          val masterIds = mediaList.map { it.id }.toSet()
+        val masterIds = mediaList.map { it.id }.toSet()
         val currentFavs = favouriteDao.getFavourites().first()
-        for(fav in currentFavs){
-            if(fav.id !in masterIds){
+        for (fav in currentFavs) {
+            if (fav.id !in masterIds) {
                 favouriteDao.removeFavourite(fav.id)
             }
         }
@@ -215,16 +220,72 @@ class MediaStoreRepositoryImpl @Inject constructor(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()
         )
         val count = contentResolver.query(
-            collection,
-            projection,
-            selection,
-            selectionArgs,
-            null
+            collection, projection, selection, selectionArgs, null
         )?.use { cursor ->
             cursor.count
         } ?: 0
         emit(count)
     }.flowOn(Dispatchers.IO)
+
+
+    override suspend fun getMediaRefs(): List<MediaRef> = withContext(Dispatchers.IO) {
+        val collection = MediaStore.Files.getContentUri("external")
+        val projection = buildList {
+            add(MediaStore.Files.FileColumns._ID)
+            add(MediaStore.Files.FileColumns.MIME_TYPE)
+            add(MediaStore.Files.FileColumns.DATE_ADDED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.MediaColumns.VOLUME_NAME)
+            }
+        }.toTypedArray()
+
+        val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (?, ?)"
+        val selectionArgs = arrayOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+        )
+
+        val out = ArrayList<MediaRef>(2048)
+        contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_ADDED)
+            val volumeCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+            } else -1
+
+            while (cursor.moveToNext()) {
+                val mime = cursor.getString(mimeCol) ?: continue
+                val isVideo = mime.startsWith("video/")
+                val id = cursor.getLong(idCol)
+
+                val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val volume = cursor.getString(volumeCol) ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
+                    if (isVideo) MediaStore.Video.Media.getContentUri(volume)
+                    else MediaStore.Images.Media.getContentUri(volume)
+                } else if (isVideo) {
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
+
+                out += MediaRef(
+                    id = id,
+                    uriString = ContentUris.withAppendedId(base, id).toString(),
+                    isVideo = isVideo,
+                    dateAddedSec = cursor.getLong(dateCol)
+                )
+            }
+        }
+        out
+    }
+    override suspend fun getMediaDetailsBundle(
+        mediaId: Long, uriString: String, isVideo: Boolean
+    ): MediaDetailsBundle = MediaDetailsBundle(
+        details = getMediaDetails(uriString, isVideo),
+        location = locationDao.getLocationFor(mediaId)
+    )
+
 
 }
 

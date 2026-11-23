@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -31,7 +33,9 @@ fun GalleryTopBar(
     scrollBehaviour: TopAppBarScrollBehavior,
     modifier: Modifier = Modifier,
     onSettingsClick:()->Unit,
-    onSearchClick:()-> Unit
+    onSearchClick:()-> Unit,
+    onMapClicked:()-> Unit
+
 ) {
     TopAppBar(
         title = {
@@ -58,6 +62,9 @@ fun GalleryTopBar(
             }
         },
         actions = {
+            IconButton(onClick = onMapClicked) {
+                Icon(Icons.Rounded.Map, contentDescription = "Photo map")
+            }
             IconButton(
                 onClick = onSearchClick, modifier = Modifier.padding(end = 4.dp),
 

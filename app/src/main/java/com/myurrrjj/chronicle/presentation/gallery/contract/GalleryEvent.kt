@@ -56,6 +56,8 @@ sealed class GalleryEvent : ViewEvent {
 
     data class UpdateActiveSharedMedia(val mediaId:Long): GalleryEvent()
 
+    data class PrefetchMediaDetails(val media: MediaAsset) : GalleryEvent()
+    object ClearPrefetchedDetails : GalleryEvent()
 
-
+    data object NavigateToPhotoMap : GalleryEvent()
 }
