@@ -29,7 +29,6 @@ class PhotoMapViewModel @Inject constructor(
     private val clusterPhotoPins: ClusterPhotoPinsUseCase
 ) : BaseViewModel<PhotoMapEvent, PhotoMapState, PhotoMapEffect>() {
 
-
     private val viewportFlow = MutableStateFlow(
         MapViewPort(
             west = -180.0,
@@ -48,10 +47,11 @@ class PhotoMapViewModel @Inject constructor(
     private val latestInView = MutableStateFlow<List<GeotaggedPhotoRow>>(emptyList())
 
     private val photosFlow = locationDao.observeAllGeotaggedPhotos().distinctUntilChanged()
+
     private var lastClusters: List<PhotoMapCluster> = emptyList()
+    private var hasFitted = false
+
     override fun createInitialState(): PhotoMapState = PhotoMapState()
-
-
 
     init {
         indexingController.observeProgress()
@@ -61,8 +61,11 @@ class PhotoMapViewModel @Inject constructor(
         combine(photosFlow, viewportFlow.debounce(120L)) { photos, viewport ->
             withContext(Dispatchers.Default) {
                 val inView = photos.filter { photo ->
-                    val lng = photo.longitude + 360.0 * round((viewport.centerLng - photo.longitude) / 360.0)
-                    photo.latitude in viewport.south..viewport.north && lng in viewport.west..viewport.east
+                    val lng = photo.longitude + 360.0 * round(
+                        (viewport.centerLng - photo.longitude) / 360.0
+                    )
+                    photo.latitude in viewport.south..viewport.north &&
+                            lng in viewport.west..viewport.east
                 }
 
                 val clusters = if (!viewport.isSettled && lastClusters.isNotEmpty()) {
@@ -77,16 +80,15 @@ class PhotoMapViewModel @Inject constructor(
                 }
 
                 Triple(photos, inView, clusters)
-
-
-                }
             }
-            .onEach { (all,inView,clusters)->
+        }
+            .onEach { (all, inView, clusters) ->
                 latestPhotos.value = all
                 latestInView.value = inView
                 setState {
-                    val sel  =selection
-                    val stillVisible = sel !is MapSelection.Cluster || clusters.any { it.id == sel.id }
+                    val sel = selection
+                    val stillVisible = sel !is MapSelection.Cluster ||
+                            clusters.any { it.id == sel.id }
                     copy(
                         isLoading = false,
                         geoTaggedCount = all.size,
@@ -100,13 +102,19 @@ class PhotoMapViewModel @Inject constructor(
                         }
                     )
                 }
-            }.launchIn(viewModelScope)
-        }
+            }
+            .launchIn(viewModelScope)
+    }
 
     override fun handleEvent(event: PhotoMapEvent) {
         when (event) {
             is PhotoMapEvent.PermissionResult -> {
-                setState { copy(permission = event.permission) }
+                setState {
+                    copy(
+                        permission = event.permission,
+                        permanentlyDenied = event.permanentlyDenied ?: permanentlyDenied
+                    )
+                }
                 if (event.permission == GeoPermission.Granted) indexingController.enqueue()
             }
 
@@ -115,15 +123,14 @@ class PhotoMapViewModel @Inject constructor(
             is PhotoMapEvent.ClusterTapped -> {
                 val cluster = event.cluster
                 when {
-                    cluster.count == 1 -> setEffect {
-                        PhotoMapEffect.OpenPhotoDetail(cluster.coverMediaId)
-                    }
+                    cluster.count == 1 -> openPhoto(cluster.coverMediaId)
 
                     viewportFlow.value.zoom < MAX_ZOOM_IN_ON_TAP -> setEffect {
                         PhotoMapEffect.AnimateTo(
                             latitude = cluster.latitude,
                             longitude = cluster.longitude,
-                            zoom = (viewportFlow.value.zoom + 2.0).coerceAtMost(MAX_ZOOM_IN_ON_TAP)
+                            zoom = (viewportFlow.value.zoom + 2.0)
+                                .coerceAtMost(MAX_ZOOM_IN_ON_TAP)
                         )
                     }
 
@@ -154,25 +161,41 @@ class PhotoMapViewModel @Inject constructor(
 
             PhotoMapEvent.ToggleMapTheme -> setState { copy(isDarkMode = !isDarkMode) }
 
-            is PhotoMapEvent.PhotoClicked -> setEffect { PhotoMapEffect.OpenPhotoDetail(event.mediaId) }
+            is PhotoMapEvent.PhotoClicked -> openPhoto(event.mediaId)
 
             PhotoMapEvent.RetryIndexing -> indexingController.enqueue()
 
             PhotoMapEvent.RequestFitToData -> {
+                if (hasFitted) return
                 val clusters = uiState.value.clusters
-                if (clusters.isNotEmpty()) {
-                    setEffect {
-                        PhotoMapEffect.FitToBounds(
-                            west = clusters.minOf { it.longitude },
-                            south = clusters.minOf { it.latitude },
-                            east = clusters.maxOf { it.longitude },
-                            north = clusters.maxOf { it.latitude }
-                        )
-                    }
+                if (clusters.isEmpty()) return
+                hasFitted = true
+                setEffect {
+                    PhotoMapEffect.FitToBounds(
+                        west = clusters.minOf { it.longitude },
+                        south = clusters.minOf { it.latitude },
+                        east = clusters.maxOf { it.longitude },
+                        north = clusters.maxOf { it.latitude }
+                    )
                 }
+            }
+
+            PhotoMapEvent.RecenterOnData -> {
+                hasFitted = false
+                handleEvent(PhotoMapEvent.RequestFitToData)
             }
         }
     }
 
-    companion object { private const val MAX_ZOOM_IN_ON_TAP = 15.0 }
+    private fun openPhoto(mediaId: Long) {
+        val scope = when (val sel = uiState.value.selection) {
+            is MapSelection.Cluster -> sel.mediaIds.toList()
+            MapSelection.ViewPort -> latestInView.value.map { it.mediaId }
+        }
+        setEffect { PhotoMapEffect.OpenPhotoDetail(mediaId, scope) }
+    }
+
+    companion object {
+        private const val MAX_ZOOM_IN_ON_TAP = 15.0
+    }
 }

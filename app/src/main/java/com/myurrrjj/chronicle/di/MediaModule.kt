@@ -11,24 +11,26 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import org.maplibre.compose.expressions.dsl.resolvedLocale
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object MediaModule {
-    @Provides
-    @Singleton
-    fun provideContentResolver(@ApplicationContext content: Context): ContentResolver{
-        return content.contentResolver
-
-    }
-
 
     @Provides
     @Singleton
-    fun provideMediaRepository(contentResolver: ContentResolver,favouriteDao: FavouriteDao,locationDao: LocationDao): MediaRepository {
-        return MediaStoreRepositoryImpl(contentResolver, favouriteDao = favouriteDao, locationDao = locationDao)
+    fun provideContentResolver(@ApplicationContext context: Context): ContentResolver =
+        context.contentResolver
 
-    }
+    @Provides
+    @Singleton
+    fun provideMediaRepository(
+        contentResolver: ContentResolver,
+        favouriteDao: FavouriteDao,
+        locationDao: LocationDao
+    ): MediaRepository = MediaStoreRepositoryImpl(
+        contentResolver = contentResolver,
+        favouriteDao = favouriteDao,
+        locationDao = locationDao
+    )
 }

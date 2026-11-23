@@ -28,11 +28,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.myurrrjj.chronicle.core.util.MediaIntents
-import com.myurrrjj.chronicle.presentation.gallery.screens.DetailScreen
+import com.myurrrjj.chronicle.presentation.gallery.GalleryViewModel
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEffect
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
+import com.myurrrjj.chronicle.presentation.gallery.screens.DetailScreen
 import com.myurrrjj.chronicle.presentation.gallery.screens.mainGridScreen.GalleryScreen
-import com.myurrrjj.chronicle.presentation.gallery.GalleryViewModel
 import com.myurrrjj.chronicle.presentation.map.PhotoMapScreen
 import com.myurrrjj.chronicle.presentation.navigation.Route.Detail
 import com.myurrrjj.chronicle.presentation.navigation.Route.DirtyTest
@@ -49,6 +49,7 @@ fun GalleryNavGraph() {
     val navController = rememberNavController()
     val context = LocalContext.current
     val sharedViewModel: GalleryViewModel = hiltViewModel()
+
     val permissionToRequest = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
@@ -56,13 +57,13 @@ fun GalleryNavGraph() {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permission ->
-        val isGranted = permission.values.all { it }
-        sharedViewModel.setEvent(GalleryEvent.PermissionResult(isGranted))
-
+        sharedViewModel.setEvent(GalleryEvent.PermissionResult(permission.values.all { it }))
     }
+
     val deleteLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -76,20 +77,18 @@ fun GalleryNavGraph() {
         sharedViewModel.effect.collect { effect ->
             when (effect) {
                 is GalleryEffect.RequestPermission -> permissionLauncher.launch(permissionToRequest)
+
                 is GalleryEffect.NavigateToDetail -> navController.navigate(Detail(effect.mediaId))
+
                 is GalleryEffect.ShareMedia -> {
                     MediaIntents.shareMediaBatch(context, effect.uris)
                     sharedViewModel.setEvent(GalleryEvent.ExitSelectionMode)
                 }
 
-                is GalleryEffect.CopyMedia -> {
-                    MediaIntents.copyToClipboard(context, effect.uris)
+                is GalleryEffect.CopyMedia -> MediaIntents.copyToClipboard(context, effect.uris)
 
-                }
-
-                is GalleryEffect.EditMedia -> {
+                is GalleryEffect.EditMedia ->
                     MediaIntents.editMedia(context, effect.uriString, effect.mimeType)
-                }
 
                 is GalleryEffect.DeleteMedia -> {
                     val uris = effect.uris.map { Uri.parse(it) }
@@ -97,9 +96,7 @@ fun GalleryNavGraph() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                             val pendingIntent =
                                 MediaStore.createDeleteRequest(context.contentResolver, uris)
-                            deleteLauncher.launch(
-                                Builder(pendingIntent.intentSender).build()
-                            )
+                            deleteLauncher.launch(Builder(pendingIntent.intentSender).build())
                         } else {
                             uris.forEach { context.contentResolver.delete(it, null, null) }
                             sharedViewModel.setEvent(GalleryEvent.LoadMedia)
@@ -114,11 +111,8 @@ fun GalleryNavGraph() {
                 GalleryEffect.NavigateToSettings -> navController.navigate(Settings)
                 GalleryEffect.NavigateToSearch -> navController.navigate(Route.Search)
                 GalleryEffect.NavigateToPhotoMap -> navController.navigate(Route.PhotoMap)
-
             }
         }
-
-
     }
 
     SharedTransitionLayout {
@@ -127,37 +121,33 @@ fun GalleryNavGraph() {
             startDestination = Gallery,
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-
-
-            ) {
+                .background(MaterialTheme.colorScheme.background)
+        ) {
             composable<DirtyTest> {
                 DirtyTestScreen()
             }
+
             composable<Gallery>(
                 enterTransition = { fadeIn(tween(300)) },
                 exitTransition = { fadeOut(tween(300, delayMillis = 90)) },
                 popEnterTransition = { fadeIn(tween(300)) },
-                popExitTransition = { fadeOut(tween(300)) }) {
-
+                popExitTransition = { fadeOut(tween(300)) }
+            ) {
                 GalleryScreen(
                     onRequestPermission = { permissionLauncher.launch(permissionToRequest) },
                     viewModel = sharedViewModel,
-
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@composable
                 )
             }
 
             composable<Detail>(
-
                 enterTransition = { fadeIn(tween(300)) },
                 exitTransition = { fadeOut(tween(300, delayMillis = 90)) },
                 popEnterTransition = { fadeIn(tween(300)) },
-                popExitTransition = { fadeOut(tween(300)) }) { backStackEntry ->
+                popExitTransition = { fadeOut(tween(300)) }
+            ) { backStackEntry ->
                 val args = backStackEntry.toRoute<Detail>()
-
-
                 DetailScreen(
                     initialMediaId = args.mediaId,
                     onNavigateBack = { navController.popBackStack() },
@@ -166,12 +156,11 @@ fun GalleryNavGraph() {
                     viewModel = sharedViewModel
                 )
             }
+
             composable<Settings> {
                 SettingsScreen(
                     onNavigateBack = { navController.popBackStack() },
-                    onOpenFaceLab = {
-                        navController.navigate(DirtyTest)
-                    }
+                    onOpenFaceLab = { navController.navigate(DirtyTest) }
                 )
             }
 
@@ -188,17 +177,23 @@ fun GalleryNavGraph() {
                         sharedViewModel.setEvent(GalleryEvent.ClearSearchMediaList)
                         navController.popBackStack()
                     },
-                    onNavigateToDetail = { mediaId -> navController.navigate(Detail(mediaId)) },
+                    onNavigateToDetail = { mediaId ->
+                        sharedViewModel.clearDetailScope()
+                        navController.navigate(Detail(mediaId))
+                    },
                     galleryViewModel = sharedViewModel
                 )
             }
+
             composable<Route.PhotoMap> {
                 PhotoMapScreen(
                     onBackClick = { navController.popBackStack() },
-                    onPhotoClick = { mediaId -> navController.navigate(Detail(mediaId)) }
+                    onPhotoClick = { mediaId, scopeIds ->
+                        sharedViewModel.openScopedDetail(scopeIds)
+                        navController.navigate(Detail(mediaId))
+                    }
                 )
             }
-
         }
     }
 }

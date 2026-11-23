@@ -29,10 +29,11 @@ import com.myurrrjj.chronicle.data.local.entity.SearchIndexEntity
         MediaLocationEntity::class,
         PlaceCacheEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
-        AutoMigration(from = 5, to = 6)
+        AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7)
     ]
 )
 abstract class GalleryDatabase : RoomDatabase() {
@@ -51,12 +52,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                     context.applicationContext,
                     GalleryDatabase::class.java,
                     "gallery_db"
-                )
-//                    .fallbackToDestructiveMigration(dropAllTables = true)
-                    .build()
-                    .also {
-                        INSTANCE = it
-                    }
+                ).build().also { INSTANCE = it }
             }
         }
     }

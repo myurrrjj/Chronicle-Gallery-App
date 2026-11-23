@@ -9,7 +9,7 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorker
@@ -33,7 +33,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
-
 @HiltWorker
 class LocationIndexingWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
@@ -45,7 +44,6 @@ class LocationIndexingWorker @AssistedInject constructor(
     private val tracker: LocationIndexingProgressTracker
 ) : CoroutineWorker(appContext, params) {
 
-
     override suspend fun getForegroundInfo(): ForegroundInfo =
         foreground("Scanning photo locations…", 0, 0)
 
@@ -55,8 +53,8 @@ class LocationIndexingWorker @AssistedInject constructor(
                 tracker.finish()
                 return@withContext done(OUTCOME_NO_PERMISSION)
             }
-            val geoGranted = canReadGeo()
 
+            val geoGranted = canReadGeo()
 
             val refs = mediaRepository.getMediaRefs()
             if (refs.isEmpty()) {
@@ -65,35 +63,44 @@ class LocationIndexingWorker @AssistedInject constructor(
             }
 
             val eligible = refs.filter { geoGranted || it.isVideo }
+            Log.i(
+                TAG,
+                "eligible=${eligible.size} photos=${refs.count { !it.isVideo }} " +
+                        "videos=${refs.count { it.isVideo }} geoGranted=$geoGranted"
+            )
             if (eligible.isEmpty()) {
                 tracker.finish()
                 return@withContext done(OUTCOME_NO_GEO_PERMISSION)
-
             }
 
-            val indexed = locationDao.getIndexedMedia()
-                .associate { it.mediaId to it.uriString }      //already indexed
-            val pending =
-                eligible.filter { it.id !in indexed }                                   //pending files
-            val staleUris =
-                eligible.filter { ref -> indexed[ref.id]?.let { it != ref.uriString } == true }     //files that might have been moved and therefore their URI is differnet now, (an edge case being taken care of)
+            val indexed = locationDao.getIndexedMedia().associateBy { it.mediaId }
 
+            val pending = eligible.filter { ref ->
+                val row = indexed[ref.id]
+                row == null || row.extractorVersion < EXTRACTOR_VERSION
+            }
+
+            val staleUris = eligible.filter { ref ->
+                val row = indexed[ref.id]
+                row != null &&
+                        row.extractorVersion >= EXTRACTOR_VERSION &&
+                        row.uriString != ref.uriString
+            }
 
             val total = eligible.size
             var processed = total - pending.size
             tracker.begin(total = total, processed = processed)
 
             if (pending.size > FOREGROUND_THRESHOLD) {
-                setForeground(foreground("Scanning photo locations...", processed, total))
-
+                setForeground(foreground("Scanning photo locations…", processed, total))
             }
 
             for (batch in pending.chunked(BATCH_SIZE)) {
                 ensureActive()
-                val entitites = ArrayList<MediaLocationEntity>(batch.size)
-                for( ref in batch){
-                    val coords = extractor.extract(ref.uriString,ref.isVideo)
-                    entitites += MediaLocationEntity(
+                val entities = ArrayList<MediaLocationEntity>(batch.size)
+                for (ref in batch) {
+                    val coords = extractor.extract(ref.uriString, ref.isVideo)
+                    entities += MediaLocationEntity(
                         mediaId = ref.id,
                         uriString = ref.uriString,
                         isVideo = ref.isVideo,
@@ -101,75 +108,65 @@ class LocationIndexingWorker @AssistedInject constructor(
                         hasLocation = coords != null,
                         latitude = coords?.latitude,
                         longitude = coords?.longitude,
-                        bucketKey = coords?.bucketKey
+                        bucketKey = coords?.bucketKey,
+                        extractorVersion = EXTRACTOR_VERSION
                     )
                 }
-                locationDao.upsertLocation(entitites)
+                locationDao.upsertLocation(entities)
                 processed += batch.size
-                tracker.report(processed,total)
+                tracker.report(processed, total)
                 setProgress(workDataOf(KEY_PROCESSED to processed, KEY_TOTAL to total))
             }
 
             for (ref in staleUris) {
                 ensureActive()
-                locationDao.updateUri(ref.id,ref.uriString)                   //staleuris updated
-
+                locationDao.updateUri(ref.id, ref.uriString)
             }
 
-            if (canReadWholeLibrary()){
-                val live = refs.mapTo(HashSet(refs.size)){it.id}
+            if (canReadWholeLibrary()) {
+                val live = refs.mapTo(HashSet(refs.size)) { it.id }
                 val deleted = indexed.keys.filterNot { it in live }
                 deleted.chunked(PRUNE_CHUNK).forEach { locationDao.deleteByIds(it) }
             }
 
-            if (isOnline()){
+            if (isOnline()) {
                 val buckets = locationDao.getUncachedBucketKeys().take(MAX_GEOCODES_PER_RUN)
-                for (bucketKey in  buckets){
+                for (bucketKey in buckets) {
                     ensureActive()
-                    val sample = locationDao.getSamplePointForBucket(bucketKey)?:continue
-                    when(val result = geocoder.resolveBucket(bucketKey,sample.latitude,sample.longitude)){
+                    val sample = locationDao.getSamplePointForBucket(bucketKey) ?: continue
+                    when (val result = geocoder.resolveBucket(bucketKey, sample.latitude, sample.longitude)) {
                         is GeocodeResult.Success -> locationDao.upsertPlace(result.place)
                         GeocodeResult.OfflineOrUnavailable -> break
                         GeocodeResult.NotFound -> Unit
                     }
-                    delay(GEOCODE_SPACING_MS)                           //a manual rate limiter basically to not overwhelm geocoder
+                    delay(GEOCODE_SPACING_MS)
                 }
             }
-
-
-
 
             tracker.finish()
             done(OUTCOME_COMPLETED)
 
         } catch (e: CancellationException) {
-    tracker.finish()
+            tracker.finish()
             throw e
-
-        }catch (e: SecurityException){
+        } catch (e: SecurityException) {
             tracker.fail("Location access was revoked.")
             Result.failure(workDataOf(KEY_OUTCOME to OUTCOME_NO_PERMISSION))
-        }
-        catch (e: Exception){
-            if (runAttemptCount  < MAX_ATTEMPTS -1){
+        } catch (e: Exception) {
+            if (runAttemptCount < MAX_ATTEMPTS - 1) {
                 Result.retry()
-            }
-            else{
-                tracker.fail(e.message?:"Location indexing stopped unexpectedly")
+            } else {
+                tracker.fail(e.message ?: "Location indexing stopped unexpectedly")
                 Result.failure(workDataOf(KEY_OUTCOME to OUTCOME_FAILED))
             }
         }
     }
 
-
     private fun foreground(text: String, processed: Int, total: Int): ForegroundInfo {
         val manager =
             appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID, "Photo Places",
-                NotificationManager.IMPORTANCE_LOW
-            )
+            NotificationChannel(CHANNEL_ID, "Photo Places", NotificationManager.IMPORTANCE_LOW)
         )
 
         val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
@@ -183,7 +180,7 @@ class LocationIndexingWorker @AssistedInject constructor(
         else builder.setProgress(0, 0, true)
 
         val notification = builder.build()
-        return if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(
                 NOTIFICATION_ID,
                 notification,
@@ -192,7 +189,6 @@ class LocationIndexingWorker @AssistedInject constructor(
         } else {
             ForegroundInfo(NOTIFICATION_ID, notification)
         }
-
     }
 
     private fun canReadLibrary(): Boolean {
@@ -201,22 +197,15 @@ class LocationIndexingWorker @AssistedInject constructor(
         } else {
             Manifest.permission.READ_EXTERNAL_STORAGE
         }
-        return ContextCompat.checkSelfPermission(
-            appContext,
-            permission
-        ) == PackageManager.PERMISSION_GRANTED
+        return ContextCompat.checkSelfPermission(appContext, permission) ==
+                PackageManager.PERMISSION_GRANTED
     }
 
+    private fun canReadGeo(): Boolean =
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
 
-    private fun done(outcome: String): Result = Result.success(workDataOf(KEY_OUTCOME to outcome))
-
-    private fun canReadGeo(): Boolean = ContextCompat.checkSelfPermission(
-        appContext,
-        Manifest.permission.ACCESS_MEDIA_LOCATION
-    ) == PackageManager.PERMISSION_GRANTED
-
-
-    private fun canReadWholeLibrary(): Boolean{
+    private fun canReadWholeLibrary(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return canReadLibrary()
         val partial = ContextCompat.checkSelfPermission(
             appContext, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
@@ -224,14 +213,15 @@ class LocationIndexingWorker @AssistedInject constructor(
         return canReadLibrary() && !partial
     }
 
-    private fun isOnline():Boolean{
-        val cm = appContext.getSystemService(ConnectivityManager::class.java)?:return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork)?:return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && caps.hasCapability(
-            NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-
+    private fun isOnline(): Boolean {
+        val cm = appContext.getSystemService(ConnectivityManager::class.java) ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
+    private fun done(outcome: String): Result =
+        Result.success(workDataOf(KEY_OUTCOME to outcome))
 
     companion object {
         const val WORK_NAME = "chronicle_location_indexing"
@@ -239,24 +229,21 @@ class LocationIndexingWorker @AssistedInject constructor(
         const val KEY_TOTAL = "total"
         const val KEY_OUTCOME = "outcome"
 
-        const val OUTCOME_NO_PERMISSION = "no_permission"
         const val OUTCOME_COMPLETED = "completed"
-        const val OUTCOME_NO_GEO_PERMISSION = "no_geo_permission"
         const val OUTCOME_FAILED = "failed"
+        const val OUTCOME_NO_PERMISSION = "no_permission"
+        const val OUTCOME_NO_GEO_PERMISSION = "no_geo_permission"
 
+        const val EXTRACTOR_VERSION = 2
 
+        private const val TAG = "LocationIndexingWorker"
         private const val CHANNEL_ID = "location_indexing_channel"
         private const val NOTIFICATION_ID = 1002
         private const val FOREGROUND_THRESHOLD = 200
         private const val BATCH_SIZE = 100
-        private const val PRUNE_CHUNK = 900              // below the 999 limit
+        private const val PRUNE_CHUNK = 900
         private const val MAX_GEOCODES_PER_RUN = 25
         private const val GEOCODE_SPACING_MS = 250L
         private const val MAX_ATTEMPTS = 3
-
-
-
-
-
     }
 }

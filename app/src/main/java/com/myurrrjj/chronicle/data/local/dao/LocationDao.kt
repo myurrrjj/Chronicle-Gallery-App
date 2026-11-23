@@ -21,16 +21,19 @@ data class GeotaggedPhotoRow(
 )
 
 data class LatLngSample(
-    val latitude: Double, val longitude: Double
+    val latitude: Double,
+    val longitude: Double
 )
 
 data class IndexedMediaRef(
-    val mediaId:Long,
-    val uriString: String
+    val mediaId: Long,
+    val uriString: String,
+    val extractorVersion: Int
 )
 
 @Dao
 interface LocationDao {
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertLocation(items: List<MediaLocationEntity>)
 
@@ -43,48 +46,48 @@ interface LocationDao {
     @Query("DELETE FROM media_location WHERE mediaId IN (:mediaIds)")
     suspend fun deleteByIds(mediaIds: List<Long>)
 
-    @Query("SELECT mediaId, uriString FROM media_location")
+    @Query("SELECT mediaId, uriString, extractorVersion FROM media_location")
     suspend fun getIndexedMedia(): List<IndexedMediaRef>
 
-    @Query("SELECT COUNT(*) FROM media_location WHERE hasLocation = 0")
-    suspend fun countWithoutLocation(): Int
-
-    @Query("DELETE FROM media_location WHERE hasLocation = 0")
-    suspend fun clearRowsWithoutLocation()
-
-    @Query("select mediaId from media_location")
-    suspend fun getAllIndexedMediaIds(): List<Long>
-
-    @Query("select distinct bucketKey from media_location where bucketKey is not null and bucketKey not in (select bucketKey from place_cache)")
+    @Query(
+        "SELECT DISTINCT bucketKey FROM media_location WHERE bucketKey IS NOT NULL " +
+                "AND bucketKey NOT IN (SELECT bucketKey FROM place_cache)"
+    )
     suspend fun getUncachedBucketKeys(): List<String>
 
-    @Query("select latitude,longitude from media_location where bucketKey = :bucketKey and hasLocation=1 limit 1")
+    @Query(
+        "SELECT latitude, longitude FROM media_location " +
+                "WHERE bucketKey = :bucketKey AND hasLocation = 1 LIMIT 1"
+    )
     suspend fun getSamplePointForBucket(bucketKey: String): LatLngSample?
 
     @Query(
         """
-            select m.mediaId, m.uriString, m.IsVideo, m.timestampSec, m.latitude, m.longitude, m.bucketKey,p.displayName as placeName
-            from media_Location m
-            left join place_cache p on m.bucketKey = p.bucketKey
-            where m.hasLocation =1 and m.latitude is not null and m.longitude is not null
-            order by m.timestampSec desc
+        SELECT m.mediaId, m.uriString, m.isVideo, m.timestampSec,
+               m.latitude, m.longitude, m.bucketKey, p.displayName AS placeName
+        FROM media_location m
+        LEFT JOIN place_cache p ON m.bucketKey = p.bucketKey
+        WHERE m.hasLocation = 1 AND m.latitude IS NOT NULL AND m.longitude IS NOT NULL
+        ORDER BY m.timestampSec DESC
         """
     )
     fun observeAllGeotaggedPhotos(): Flow<List<GeotaggedPhotoRow>>
 
-    @Query("""
-    SELECT m.latitude, m.longitude, p.displayName AS placeName
-    FROM media_location m
-    LEFT JOIN place_cache p ON m.bucketKey = p.bucketKey
-    WHERE m.mediaId = :mediaId AND m.hasLocation = 1
-    LIMIT 1
-""")
+    @Query(
+        """
+        SELECT m.latitude, m.longitude, p.displayName AS placeName
+        FROM media_location m
+        LEFT JOIN place_cache p ON m.bucketKey = p.bucketKey
+        WHERE m.mediaId = :mediaId AND m.hasLocation = 1
+        LIMIT 1
+        """
+    )
     suspend fun getLocationFor(mediaId: Long): MediaLocationInfo?
-
 
     @Query(
         """
-        SELECT m.mediaId, m.uriString, m.isVideo, m.timestampSec, m.latitude, m.longitude, m.bucketKey, p.displayName AS placeName
+        SELECT m.mediaId, m.uriString, m.isVideo, m.timestampSec,
+               m.latitude, m.longitude, m.bucketKey, p.displayName AS placeName
         FROM media_location m
         LEFT JOIN place_cache p ON m.bucketKey = p.bucketKey
         WHERE m.hasLocation = 1
@@ -94,21 +97,9 @@ interface LocationDao {
         """
     )
     suspend fun getPhotosInBounds(
-        minLat: Double, maxLat: Double, minLng: Double, maxLng: Double
+        minLat: Double,
+        maxLat: Double,
+        minLng: Double,
+        maxLng: Double
     ): List<GeotaggedPhotoRow>
-
-
-    @Query("select count(*) from media_location where hasLocation = 1")
-    fun observeGeotaggedCount(): Flow<Int>
-
-    @Query("delete from media_location where mediaId not in (:existingIds)")
-    suspend fun pruneDeletedMedia(existingIds:List<Long>)
-
-
-
-
-
-
-
-
 }

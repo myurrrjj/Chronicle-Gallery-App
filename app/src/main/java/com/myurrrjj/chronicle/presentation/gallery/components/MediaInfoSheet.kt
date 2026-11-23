@@ -309,7 +309,12 @@ fun AnimatedDetailContent(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = location?.placeName ?: "No location data",
+                            text = when {
+                                location == null -> "No location data"
+                                location.placeName == null -> "Location unknown"
+                                else -> location.placeName
+                            },
+
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 2,

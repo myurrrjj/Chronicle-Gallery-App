@@ -132,6 +132,7 @@ class GalleryViewModel @Inject constructor(
             )
 
             is GalleryEvent.OpenInfoSheet -> openInfoSheet(event.media)
+
             is GalleryEvent.CloseInfoSheet -> setState { copy(infoSheetState = InfoSheetState.Closed) }
             is GalleryEvent.PrefetchMediaDetails -> prefetchMediaDetails(event.media)
             GalleryEvent.ClearPrefetchedDetails -> {
@@ -504,6 +505,23 @@ class GalleryViewModel @Inject constructor(
             }
         }
     }
+
+    fun openScopedDetail(scopeIds: List<Long>) {
+        setState {
+            copy(
+                interactionState = interactionState.copy(
+                    detailScopeIds = scopeIds.toPersistentList()
+                )
+            )
+        }
+    }
+
+    fun clearDetailScope() {
+        setState {
+            copy(interactionState = interactionState.copy(detailScopeIds = null))
+        }
+    }
+
 
 
     private fun handleTabSelection(tab: GalleryTab) {

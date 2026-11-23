@@ -123,6 +123,7 @@ import com.myurrrjj.chronicle.presentation.gallery.components.formatVideoTime
 import com.myurrrjj.chronicle.presentation.gallery.components.rememberVideoPlayerState
 import com.myurrrjj.chronicle.presentation.gallery.components.selectTrack
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -158,18 +159,32 @@ fun DetailScreen(
         mutableStateOf(VideoResizeMode.FIT)
     }
     val context = LocalContext.current
-    val initialIndex = remember(initialMediaId, contentState.displayedMediaList) {
-        contentState.displayedMediaList.indexOfFirst { it.id == initialMediaId }.coerceAtLeast(0)
+    val scopeIds = state.interactionState.detailScopeIds
+
+    val pagerMedia = remember(
+        scopeIds,
+        contentState.masterMediaList,
+        contentState.displayedMediaList
+    ) {
+        if (scopeIds.isNullOrEmpty()) {
+            contentState.displayedMediaList
+        } else {
+            val byId = contentState.masterMediaList.associateBy { it.id }
+            scopeIds.mapNotNull { byId[it] }.toImmutableList()
+        }
+    }
+
+    val initialIndex = remember(initialMediaId, pagerMedia) {
+        pagerMedia.indexOfFirst { it.id == initialMediaId }.coerceAtLeast(0)
     }
 
     val pagerState = rememberPagerState(
-        initialPage = initialIndex, pageCount = { contentState.displayedMediaList.size })
+        initialPage = initialIndex, pageCount = { pagerMedia.size })
 
     val currentMedia by remember {
-        derivedStateOf {
-            contentState.displayedMediaList.getOrNull(pagerState.currentPage)
-        }
+        derivedStateOf { pagerMedia.getOrNull(pagerState.currentPage) }
     }
+
 
     LaunchedEffect(currentMedia?.id) {
         currentMedia?.let { media ->
@@ -193,7 +208,10 @@ fun DetailScreen(
         }
     }
     DisposableEffect(Unit) {
-        onDispose { viewModel.setEvent(GalleryEvent.ClearPrefetchedDetails) }
+        onDispose {
+            viewModel.setEvent(GalleryEvent.ClearPrefetchedDetails)
+            viewModel.clearDetailScope()
+        }
     }
 
 
@@ -256,9 +274,10 @@ fun DetailScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
             pageSpacing = 16.dp,
-            key = { page -> contentState.displayedMediaList[page].id }) { page ->
+            key = { page -> pagerMedia[page].id }) { page ->
 
-            val media = contentState.displayedMediaList[page]
+            val media = pagerMedia[page]
+
             val imageRequest = remember(media.uriString, screenWidthPx, screenHeightPx) {
                 val cachedKey = ThumbnailSizes.findCachedThumbnailKey(imageLoader, media.uriString)
                 val fullKey = ThumbnailSizes.fullCacheKey(media.uriString)

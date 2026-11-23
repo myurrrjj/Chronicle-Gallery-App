@@ -23,8 +23,8 @@ data class GalleryUiConfig(
     val error: String? = null,
     val hasPermission: Boolean = false,
     val currentViewMode: GalleryViewMode = GalleryViewMode.DAY,
-    val autoPlayVideo: Boolean = true,val videoSeekSeconds: Int = 5
-
+    val autoPlayVideo: Boolean = true,
+    val videoSeekSeconds: Int = 5
 )
 
 data class MediaContentState(
@@ -43,8 +43,9 @@ data class InteractionState(
     val openedAlbum: Album? = null,
     val openedPersonCluster: PersonCluster? = null,
     val selectionMode: Boolean = false,
-    val selectedMediaIds: ImmutableSet<Long> = persistentSetOf()
-    ,val activeSharedMediaId : Long? = null
+    val selectedMediaIds: ImmutableSet<Long> = persistentSetOf(),
+    val activeSharedMediaId: Long? = null,
+    val detailScopeIds: ImmutableList<Long>? = null
 )
 
 data class GalleryState(
@@ -52,10 +53,9 @@ data class GalleryState(
     val contentState: MediaContentState = MediaContentState(),
     val interactionState: InteractionState = InteractionState(),
     val infoSheetState: InfoSheetState = InfoSheetState.Closed,
+    val prefetchedMediaId: Long? = null,
+    val prefetchedBundle: MediaDetailsBundle? = null,
     val faceIndexing: FaceIndexingProgress = FaceIndexingProgress(),
     val faceIndexingOptions: FaceIndexingOptions = FaceIndexingOptions(),
-    val showFaceIndexingSheet: Boolean = false,
-    val prefetchedMediaId: Long? = null,
-    val prefetchedBundle: MediaDetailsBundle? = null
-
+    val showFaceIndexingSheet: Boolean = false
 ) : ViewState

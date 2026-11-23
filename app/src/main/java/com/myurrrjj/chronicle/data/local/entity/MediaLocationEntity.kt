@@ -1,5 +1,6 @@
 package com.myurrrjj.chronicle.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -20,5 +21,7 @@ data class MediaLocationEntity(
     val hasLocation: Boolean,
     val latitude: Double?,
     val longitude: Double?,
-    val bucketKey: String?
+    val bucketKey: String?,
+    @ColumnInfo(defaultValue = "0")
+    val extractorVersion: Int = 0
 )

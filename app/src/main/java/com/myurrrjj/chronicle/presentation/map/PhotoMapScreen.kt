@@ -1,9 +1,12 @@
 package com.myurrrjj.chronicle.presentation.map
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
-import androidx.activity.compose.ManagedActivityResultLauncher
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -36,6 +39,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -60,17 +65,21 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 import com.myurrrjj.chronicle.domain.model.PhotoMapCluster
+import com.myurrrjj.chronicle.presentation.gallery.components.findActivity
 import org.maplibre.compose.camera.CameraAnimation
+import org.maplibre.compose.camera.CameraAnimation.*
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
 import org.maplibre.compose.map.MaplibreMap
@@ -91,36 +100,38 @@ private val PIN_CELL = 48.dp
 @Composable
 fun PhotoMapScreen(
     onBackClick: () -> Unit,
-    onPhotoClick: (Long) -> Unit,
+    onPhotoClick: (Long, List<Long>) -> Unit,
     viewModel: PhotoMapViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val density = LocalDensity.current
     val scaffoldState = rememberBottomSheetScaffoldState()
+    val activity = remember(context) { context.findActivity() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        val blocked = !granted && activity?.shouldShowRequestPermissionRationale(
+            Manifest.permission.ACCESS_MEDIA_LOCATION
+        ) == false
         viewModel.setEvent(
             PhotoMapEvent.PermissionResult(
-                if (granted) GeoPermission.Granted else GeoPermission.Denied
+                permission = if (granted) GeoPermission.Granted else GeoPermission.Denied,
+                permanentlyDenied = blocked
             )
         )
     }
 
-    LaunchedEffect(Unit) {
-        viewModel.setEvent(
-            PhotoMapEvent.PermissionResult(
-                when {
-                    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> GeoPermission.NotRequired
-                    ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.ACCESS_MEDIA_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED -> GeoPermission.Granted
-                    else -> GeoPermission.Denied
-                }
-            )
-        )
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.setEvent(PhotoMapEvent.PermissionResult(currentGeoPermission(context)))
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val styleUrl = if (state.isDarkMode) STYLE_DARK else STYLE_LIGHT
@@ -141,17 +152,19 @@ fun PhotoMapScreen(
                         target = Position(latitude = effect.latitude, longitude = effect.longitude),
                         zoom = effect.zoom
                     ),
-                    animation = CameraAnimation.Ease(duration = 350.milliseconds)
+                    animation = Ease(duration = 350.milliseconds)
                 )
 
                 is PhotoMapEffect.FitToBounds -> mapState.animateCameraToBounds(
                     boundingBox = BoundingBox(
-                        west = effect.west, south = effect.south,
-                        east = effect.east, north = effect.north
+                        west = effect.west,
+                        south = effect.south,
+                        east = effect.east,
+                        north = effect.north
                     )
                 )
 
-                is PhotoMapEffect.OpenPhotoDetail -> onPhotoClick(effect.mediaId)
+                is PhotoMapEffect.OpenPhotoDetail -> onPhotoClick(effect.mediaId, effect.scopeIds)
             }
         }
     }
@@ -164,7 +177,10 @@ fun PhotoMapScreen(
                 viewModel.setEvent(
                     PhotoMapEvent.ViewportChanged(
                         MapViewPort(
-                            west = b.west, south = b.south, east = b.east, north = b.north,
+                            west = b.west,
+                            south = b.south,
+                            east = b.east,
+                            north = b.north,
                             centerLat = viewport.cameraPosition.target.latitude,
                             centerLng = viewport.cameraPosition.target.longitude,
                             zoom = viewport.cameraPosition.zoom,
@@ -176,8 +192,10 @@ fun PhotoMapScreen(
             }
     }
 
-    LaunchedEffect(state.geoTaggedCount > 0) {
-        if (state.geoTaggedCount > 0) viewModel.setEvent(PhotoMapEvent.RequestFitToData)
+    val phase = state.phase()
+
+    LaunchedEffect(phase) {
+        if (phase == MapPhase.Ready) viewModel.setEvent(PhotoMapEvent.RequestFitToData)
     }
 
     BottomSheetScaffold(
@@ -205,11 +223,164 @@ fun PhotoMapScreen(
                 }
             }
 
-            MapTopBar(state, onBackClick, viewModel, permissionLauncher)
+            MapTopBar(onBackClick = onBackClick)
 
-            if (!state.isLoading && state.geoTaggedCount == 0) {
+            if (phase != MapPhase.Ready) {
+                MapStatusBanner(
+                    phase = phase,
+                    state = state,
+                    onAllowLocation = {
+                        if (state.permanentlyDenied) openAppSettings(context)
+                        else permissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                    },
+                    onRetry = { viewModel.setEvent(PhotoMapEvent.RetryIndexing) },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 64.dp)
+                )
+            }
+
+            if (phase == MapPhase.Empty) {
                 EmptyMapHint(state, viewModel)
             }
+
+            MapThemeToggle(
+                isDark = state.isDarkMode,
+                onClick = { viewModel.setEvent(PhotoMapEvent.ToggleMapTheme) },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = SHEET_PEEK + 64.dp)
+            )
+        }
+    }
+}
+
+private fun currentGeoPermission(context: Context): GeoPermission = when {
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> GeoPermission.NotRequired
+    ContextCompat.checkSelfPermission(
+        context, Manifest.permission.ACCESS_MEDIA_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED -> GeoPermission.Granted
+    else -> GeoPermission.Denied
+}
+
+private fun openAppSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null)
+    )
+    (context.findActivity() ?: context).startActivity(
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+}
+
+@Composable
+private fun MapTopBar(onBackClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            tonalElevation = 4.dp
+        ) {
+            IconButton(onClick = onBackClick) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back"
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MapStatusBanner(
+    phase: MapPhase,
+    state: PhotoMapState,
+    onAllowLocation: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        tonalElevation = 4.dp,
+        modifier = modifier
+    ) {
+        Row(
+            Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            when (phase) {
+                MapPhase.NeedsLocationAccess -> {
+                    Icon(
+                        Icons.Rounded.Place,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (state.permanentlyDenied) "Location access is blocked"
+                        else "Location access is off",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    TextButton(onClick = onAllowLocation) {
+                        Text(if (state.permanentlyDenied) "Settings" else "Allow")
+                    }
+                }
+
+                MapPhase.Indexing -> {
+                    CircularProgressIndicator(
+                        Modifier.size(14.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = if (state.indexing.total > 0) {
+                            "Mapping ${state.indexing.processed} of ${state.indexing.total}"
+                        } else {
+                            "Checking your library…"
+                        },
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+
+                MapPhase.Empty -> {
+                    Text(
+                        "No geotagged photos",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    TextButton(onClick = onRetry) { Text("Scan again") }
+                }
+
+                MapPhase.Ready -> Unit
+            }
+        }
+    }
+}
+
+@Composable
+private fun MapThemeToggle(
+    isDark: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        tonalElevation = 4.dp,
+        modifier = modifier
+    ) {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = if (isDark) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
+                contentDescription = "Toggle map theme"
+            )
         }
     }
 }
@@ -268,13 +439,16 @@ private fun MapSheet(state: PhotoMapState, viewModel: PhotoMapViewModel) {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
                 Text(
-                    text = (state.selection as? MapSelection.Cluster)?.title ?: "Photos in this area",
+                    text = (state.selection as? MapSelection.Cluster)?.title
+                        ?: "Photos in this area",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -316,7 +490,10 @@ private fun MapSheet(state: PhotoMapState, viewModel: PhotoMapViewModel) {
                             .build()
                     }
                     Image(
-                        painter = rememberAsyncImagePainter(request, contentScale = ContentScale.Crop),
+                        painter = rememberAsyncImagePainter(
+                            request,
+                            contentScale = ContentScale.Crop
+                        ),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -333,99 +510,23 @@ private fun MapSheet(state: PhotoMapState, viewModel: PhotoMapViewModel) {
 }
 
 @Composable
-private fun MapTopBar(
-    state: PhotoMapState,
-    onBack: () -> Unit,
-    viewModel: PhotoMapViewModel,
-    permissionLauncher: ManagedActivityResultLauncher<String, Boolean>
-) {
-    Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-            tonalElevation = 4.dp
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-            }
-        }
-
-        when {
-            state.indexing.isRunning -> IndexingPill(state.indexing.processed, state.indexing.total)
-
-            state.permission == GeoPermission.Denied -> Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                tonalElevation = 4.dp
-            ) {
-                TextButton(
-                    onClick = { permissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) }
-                ) {
-                    Text("Allow photo locations", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-
-            else -> Spacer(Modifier.size(1.dp))
-        }
-
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-            tonalElevation = 4.dp
-        ) {
-            IconButton(onClick = { viewModel.setEvent(PhotoMapEvent.ToggleMapTheme) }) {
-                Icon(
-                    imageVector = if (state.isDarkMode) Icons.Rounded.LightMode
-                    else Icons.Rounded.DarkMode,
-                    contentDescription = "Toggle map theme"
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun IndexingPill(processed: Int, total: Int) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        tonalElevation = 4.dp
-    ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-            Text(
-                text = if (total > 0) "Mapping $processed/$total" else "Checking your library…",
-                style = MaterialTheme.typography.labelMedium
-            )
-        }
-    }
-}
-
-@Composable
 private fun BoxScope.EmptyMapHint(state: PhotoMapState, viewModel: PhotoMapViewModel) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
         tonalElevation = 6.dp,
-        modifier = Modifier.align(Alignment.Center).padding(24.dp)
+        modifier = Modifier
+            .align(Alignment.Center)
+            .padding(24.dp)
     ) {
-        Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text("No photo locations yet", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(6.dp))
             Text(
-                text = if (state.permission == GeoPermission.Denied) {
-                    "Chronicle needs photo-location access to place your photos on the map."
-                } else {
-                    "None of your photos carry GPS data yet. Screenshots and forwarded images usually don't."
-                },
+                text = "None of your photos carry GPS data yet. Screenshots and forwarded images usually don't.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -436,32 +537,3 @@ private fun BoxScope.EmptyMapHint(state: PhotoMapState, viewModel: PhotoMapViewM
         }
     }
 }
-
-//@Preview(showBackground = true, name = "Cluster Pin")
-//@Composable
-//private fun ClusterPinPreview() {
-//    MaterialTheme {
-//        Box(Modifier.padding(24.dp)) {
-//            ClusterPin(
-//                cluster = PhotoMapCluster(
-//                    latitude = 20.5937,
-//                    longitude = 78.9629,
-//                    count = 12,
-//                    coverUriString = "file:///preview/cover.jpg",
-//                    placeName = "Bengaluru"
-//                ),
-//                onClick = {}
-//            )
-//        }
-//    }
-//}
-//
-//@Preview(showBackground = true, name = "Indexing Pill")
-//@Composable
-//private fun IndexingPillPreview() {
-//    MaterialTheme {
-//        Box(Modifier.padding(16.dp)) {
-//            IndexingPill(processed = 42, total = 100)
-//        }
-//    }
-//}
