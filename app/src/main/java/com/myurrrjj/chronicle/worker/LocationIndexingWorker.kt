@@ -130,7 +130,9 @@ class LocationIndexingWorker @AssistedInject constructor(
             }
 
             if (isOnline()) {
-                val buckets = locationDao.getUncachedBucketKeys().take(MAX_GEOCODES_PER_RUN)
+                val buckets = locationDao
+                    .getUncachedBucketKeys(System.currentTimeMillis() - PLACE_TTL_MS)
+                    .take(MAX_GEOCODES_PER_RUN)
                 for (bucketKey in buckets) {
                     ensureActive()
                     val sample = locationDao.getSamplePointForBucket(bucketKey) ?: continue
@@ -202,8 +204,13 @@ class LocationIndexingWorker @AssistedInject constructor(
     }
 
     private fun canReadGeo(): Boolean =
-        ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            true
+        } else {
+            ContextCompat.checkSelfPermission(
+                appContext, Manifest.permission.ACCESS_MEDIA_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        }
 
     private fun canReadWholeLibrary(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return canReadLibrary()
@@ -234,7 +241,7 @@ class LocationIndexingWorker @AssistedInject constructor(
         const val OUTCOME_NO_PERMISSION = "no_permission"
         const val OUTCOME_NO_GEO_PERMISSION = "no_geo_permission"
 
-        const val EXTRACTOR_VERSION = 2
+        const val EXTRACTOR_VERSION = 3
 
         private const val TAG = "LocationIndexingWorker"
         private const val CHANNEL_ID = "location_indexing_channel"
@@ -245,5 +252,7 @@ class LocationIndexingWorker @AssistedInject constructor(
         private const val MAX_GEOCODES_PER_RUN = 25
         private const val GEOCODE_SPACING_MS = 250L
         private const val MAX_ATTEMPTS = 3
+        private const val PLACE_TTL_MS = 90L * 24L * 60L * 60L * 1000L
+
     }
 }

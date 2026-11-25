@@ -210,7 +210,6 @@ fun DetailScreen(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.setEvent(GalleryEvent.ClearPrefetchedDetails)
-            viewModel.clearDetailScope()
         }
     }
 

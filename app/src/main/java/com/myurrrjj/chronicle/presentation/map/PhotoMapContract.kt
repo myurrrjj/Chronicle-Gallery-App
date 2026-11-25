@@ -53,10 +53,11 @@ enum class MapPhase { NeedsLocationAccess, Indexing, Empty, Ready }
 fun PhotoMapState.phase(): MapPhase = when {
     permission == GeoPermission.Denied || permission == GeoPermission.Unknown ->
         MapPhase.NeedsLocationAccess
-    indexing.isRunning -> MapPhase.Indexing
+    !isLoading && geoTaggedCount == 0 && indexing.isRunning -> MapPhase.Indexing
     !isLoading && geoTaggedCount == 0 -> MapPhase.Empty
     else -> MapPhase.Ready
 }
+
 
 sealed interface PhotoMapEvent : ViewEvent {
     data class PermissionResult(

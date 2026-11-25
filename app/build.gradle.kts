@@ -41,8 +41,8 @@ android {
         applicationId = "com.myurrrjj.chronicle"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -150,6 +150,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.kotlinx.serialization.json)
+    implementation(platform(libs.androidx.compose.bom))
 
     implementation(libs.coil.compose)
     implementation(libs.coil.video)

@@ -49,11 +49,16 @@ interface LocationDao {
     @Query("SELECT mediaId, uriString, extractorVersion FROM media_location")
     suspend fun getIndexedMedia(): List<IndexedMediaRef>
 
+
+
+
     @Query(
         "SELECT DISTINCT bucketKey FROM media_location WHERE bucketKey IS NOT NULL " +
-                "AND bucketKey NOT IN (SELECT bucketKey FROM place_cache)"
+                "AND bucketKey NOT IN " +
+                "(SELECT bucketKey FROM place_cache WHERE updatedAtMs >= :freshSinceMs)"
     )
-    suspend fun getUncachedBucketKeys(): List<String>
+    suspend fun getUncachedBucketKeys(freshSinceMs: Long): List<String>
+
 
     @Query(
         "SELECT latitude, longitude FROM media_location " +

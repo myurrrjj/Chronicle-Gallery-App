@@ -19,7 +19,11 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.math.PI
+import kotlin.math.ln
+import kotlin.math.log2
 import kotlin.math.round
+import kotlin.math.tan
 
 @OptIn(FlowPreview::class)
 @HiltViewModel
@@ -60,13 +64,23 @@ class PhotoMapViewModel @Inject constructor(
 
         combine(photosFlow, viewportFlow.debounce(120L)) { photos, viewport ->
             withContext(Dispatchers.Default) {
-                val inView = photos.filter { photo ->
-                    val lng = photo.longitude + 360.0 * round(
-                        (viewport.centerLng - photo.longitude) / 360.0
+                val inView = if (viewport.west < -180.0 || viewport.east > 180.0) {
+                    photos.filter { photo ->
+                        val lng = photo.longitude + 360.0 * round(
+                            (viewport.centerLng - photo.longitude) / 360.0
+                        )
+                        photo.latitude in viewport.south..viewport.north &&
+                                lng in viewport.west..viewport.east
+                    }
+                } else {
+                    locationDao.getPhotosInBounds(
+                        minLat = viewport.south,
+                        maxLat = viewport.north,
+                        minLng = viewport.west,
+                        maxLng = viewport.east
                     )
-                    photo.latitude in viewport.south..viewport.north &&
-                            lng in viewport.west..viewport.east
                 }
+
 
                 val clusters = if (!viewport.isSettled && lastClusters.isNotEmpty()) {
                     lastClusters
@@ -115,33 +129,40 @@ class PhotoMapViewModel @Inject constructor(
                         permanentlyDenied = event.permanentlyDenied ?: permanentlyDenied
                     )
                 }
-                if (event.permission == GeoPermission.Granted) indexingController.enqueue()
+                if (event.permission == GeoPermission.Granted && !uiState.value.indexing.isRunning) {
+                    indexingController.enqueue()
+                }
             }
 
             is PhotoMapEvent.ViewportChanged -> viewportFlow.value = event.viewport
 
             is PhotoMapEvent.ClusterTapped -> {
                 val cluster = event.cluster
-                when {
-                    cluster.count == 1 -> openPhoto(cluster.coverMediaId)
+                val viewport = viewportFlow.value
+                val ids = cluster.mediaIds.toSet()
 
-                    viewportFlow.value.zoom < MAX_ZOOM_IN_ON_TAP -> setEffect {
-                        PhotoMapEffect.AnimateTo(
-                            latitude = cluster.latitude,
-                            longitude = cluster.longitude,
-                            zoom = (viewportFlow.value.zoom + 2.0)
-                                .coerceAtMost(MAX_ZOOM_IN_ON_TAP)
-                        )
+                if (cluster.count == 1){
+                    openPhoto(cluster.coverMediaId)
+                }
+                else{
+                    val targetZoom = zoomToSeparate(viewport,ids)
+                    if (targetZoom - viewport.zoom >= MIN_ZOOM_STEP){
+                        setEffect {
+                            PhotoMapEffect.AnimateTo(
+                                cluster.latitude,
+                                cluster.longitude,
+                                targetZoom
+                            )
+                        }
                     }
-
-                    else -> {
-                        val ids = cluster.mediaIds.toSet()
+                    else{
                         setState {
                             copy(
                                 selection = MapSelection.Cluster(
                                     id = cluster.id,
                                     title = cluster.placeName ?: "${cluster.count} photos",
                                     mediaIds = ids
+
                                 ),
                                 sheetPhotos = latestPhotos.value
                                     .filter { it.mediaId in ids }
@@ -150,6 +171,8 @@ class PhotoMapViewModel @Inject constructor(
                         }
                     }
                 }
+
+
             }
 
             PhotoMapEvent.ClearSelection -> setState {
@@ -167,15 +190,23 @@ class PhotoMapViewModel @Inject constructor(
 
             PhotoMapEvent.RequestFitToData -> {
                 if (hasFitted) return
-                val clusters = uiState.value.clusters
-                if (clusters.isEmpty()) return
+                val photos = latestPhotos.value
+                if (photos.isEmpty()) return
                 hasFitted = true
+
+                val south = photos.minOf { it.latitude }
+                val north = photos.maxOf { it.latitude }
+                val west = photos.minOf { it.longitude }
+                val east = photos.maxOf { it.longitude }
+                val latPad = ((north - south) * FIT_PADDING_FRACTION).coerceAtLeast(MIN_FIT_PAD)
+                val lngPad = ((east - west) * FIT_PADDING_FRACTION).coerceAtLeast(MIN_FIT_PAD)
+
                 setEffect {
                     PhotoMapEffect.FitToBounds(
-                        west = clusters.minOf { it.longitude },
-                        south = clusters.minOf { it.latitude },
-                        east = clusters.maxOf { it.longitude },
-                        north = clusters.maxOf { it.latitude }
+                        west = west - lngPad,
+                        south = south - latPad,
+                        east = east + lngPad,
+                        north = north + latPad
                     )
                 }
             }
@@ -186,16 +217,59 @@ class PhotoMapViewModel @Inject constructor(
             }
         }
     }
+    private fun zoomToSeparate(viewport: MapViewPort, ids: Set<Long>): Double {
+        val points = latestPhotos.value.filter { it.mediaId in ids }
+        if (points.size < 2) return (viewport.zoom + ZOOM_STEP).coerceAtMost(MAX_PIN_ZOOM)
+
+        val lngSpan = (points.maxOf { it.longitude } - points.minOf { it.longitude })
+            .coerceAtLeast(MIN_SPAN)
+        val latSpan = (mercatorY(points.minOf { it.latitude }) - mercatorY(points.maxOf { it.latitude }))
+            .coerceAtLeast(MIN_SPAN)
+        val viewLngSpan = (viewport.east - viewport.west).coerceAtLeast(MIN_SPAN)
+        val viewLatSpan = (mercatorY(viewport.south) - mercatorY(viewport.north)).coerceAtLeast(MIN_SPAN)
+
+        val fitX = viewport.zoom + log2(viewLngSpan * FIT_FRACTION / lngSpan)
+        val fitY = viewport.zoom + log2(viewLatSpan * FIT_FRACTION / latSpan)
+
+        return minOf(fitX, fitY).coerceAtMost(MAX_PIN_ZOOM)
+    }
+
+    private fun mercatorY(latitude: Double): Double {
+        val clamped = latitude.coerceIn(-MERCATOR_MAX_LAT, MERCATOR_MAX_LAT)
+        return 0.5 - ln(tan(PI / 4.0 + clamped * PI / 360.0)) / (2.0 * PI)
+    }
+
 
     private fun openPhoto(mediaId: Long) {
         val scope = when (val sel = uiState.value.selection) {
             is MapSelection.Cluster -> sel.mediaIds.toList()
-            MapSelection.ViewPort -> latestInView.value.map { it.mediaId }
+            MapSelection.ViewPort -> {
+                val ordered = latestInView.value
+                val index = ordered.indexOfFirst { it.mediaId == mediaId }
+                if (index < 0) {
+                    listOf(mediaId)
+                } else {
+                    ordered.subList(
+                        (index - SCOPE_RADIUS).coerceAtLeast(0),
+                        (index + SCOPE_RADIUS + 1).coerceAtMost(ordered.size)
+                    ).map { it.mediaId }
+                }
+            }
         }
         setEffect { PhotoMapEffect.OpenPhotoDetail(mediaId, scope) }
     }
 
+
     companion object {
-        private const val MAX_ZOOM_IN_ON_TAP = 15.0
+        private const val FIT_FRACTION = 0.45
+        private const val MIN_ZOOM_STEP = 0.75
+        private const val MAX_PIN_ZOOM = 17.0
+        private const val ZOOM_STEP = 2.0
+        private const val MIN_SPAN = 1e-6
+        private const val MERCATOR_MAX_LAT = 85.05112878
+        private const val SCOPE_RADIUS = 250
+        private const val FIT_PADDING_FRACTION = 0.02
+        private const val MIN_FIT_PAD = 0.01
     }
+
 }

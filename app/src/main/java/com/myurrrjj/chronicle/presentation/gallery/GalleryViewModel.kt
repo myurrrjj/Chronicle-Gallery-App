@@ -662,7 +662,8 @@ class GalleryViewModel @Inject constructor(
 
         setState {
             copy(interactionState = interactionState.copy(
-                activeSharedMediaId = mediaId
+                activeSharedMediaId = mediaId,
+                detailScopeIds = null
             ))
         }
 

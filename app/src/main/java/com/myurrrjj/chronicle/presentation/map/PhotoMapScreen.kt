@@ -40,7 +40,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.BottomSheetScaffoldState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -54,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -63,10 +66,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -78,8 +81,7 @@ import coil.request.ImageRequest
 import com.myurrrjj.chronicle.core.util.ThumbnailSizes
 import com.myurrrjj.chronicle.domain.model.PhotoMapCluster
 import com.myurrrjj.chronicle.presentation.gallery.components.findActivity
-import org.maplibre.compose.camera.CameraAnimation
-import org.maplibre.compose.camera.CameraAnimation.*
+import org.maplibre.compose.camera.CameraAnimation.Ease
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
 import org.maplibre.compose.map.MaplibreMap
@@ -87,6 +89,7 @@ import org.maplibre.compose.map.rememberMapState
 import org.maplibre.compose.overlay.MapOverlay
 import org.maplibre.compose.overlay.include
 import org.maplibre.compose.style.BaseStyle
+import org.maplibre.compose.util.DpPadding
 import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 import kotlin.time.Duration.Companion.milliseconds
@@ -95,6 +98,7 @@ private const val STYLE_DARK = "https://tiles.openfreemap.org/styles/dark"
 private const val STYLE_LIGHT = "https://tiles.openfreemap.org/styles/liberty"
 private val SHEET_PEEK = 148.dp
 private val PIN_CELL = 48.dp
+private val CLUSTER_CELL = 60.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +109,6 @@ fun PhotoMapScreen(
 ) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val density = LocalDensity.current
     val scaffoldState = rememberBottomSheetScaffoldState()
     val activity = remember(context) { context.findActivity() }
 
@@ -161,8 +164,15 @@ fun PhotoMapScreen(
                         south = effect.south,
                         east = effect.east,
                         north = effect.north
+                    ),
+                    cameraPadding = DpPadding(
+                        top = 72.dp,
+                        left = 32.dp,
+                        right = 32.dp,
+                        bottom = 16.dp
                     )
                 )
+
 
                 is PhotoMapEffect.OpenPhotoDetail -> onPhotoClick(effect.mediaId, effect.scopeIds)
             }
@@ -184,13 +194,20 @@ fun PhotoMapScreen(
                             centerLat = viewport.cameraPosition.target.latitude,
                             centerLng = viewport.cameraPosition.target.longitude,
                             zoom = viewport.cameraPosition.zoom,
-                            cellPx = with(density) { PIN_CELL.toPx() },
+                            cellPx = CLUSTER_CELL.value,
                             isSettled = !moving
                         )
                     )
                 )
             }
     }
+
+    LaunchedEffect(state.selection) {
+        if (state.selection is MapSelection.Cluster) {
+            scaffoldState.bottomSheetState.expand()
+        }
+    }
+
 
     val phase = state.phase()
 
@@ -202,7 +219,7 @@ fun PhotoMapScreen(
         scaffoldState = scaffoldState,
         sheetPeekHeight = SHEET_PEEK,
         sheetContainerColor = MaterialTheme.colorScheme.surface,
-        sheetContent = { MapSheet(state, viewModel) }
+        sheetContent = { MapSheet(state, viewModel,scaffoldState) }
     ) { _ ->
         Box(Modifier.fillMaxSize()) {
             MaplibreMap(
@@ -213,14 +230,23 @@ fun PhotoMapScreen(
                 include(MapOverlay.Default)
 
                 state.clusters.forEach { cluster ->
-                    ClusterPin(
-                        cluster = cluster,
-                        onClick = { viewModel.setEvent(PhotoMapEvent.ClusterTapped(cluster)) },
-                        modifier = Modifier.placedAt(
-                            Position(latitude = cluster.latitude, longitude = cluster.longitude)
+                    key(cluster.id) {
+                        ClusterPin(
+                            cluster = cluster,
+                            onClick = { viewModel.setEvent(PhotoMapEvent.ClusterTapped(cluster)) },
+                            modifier = Modifier
+                                .placedAt(
+                                    Position(
+                                        latitude = cluster.latitude,
+                                        longitude = cluster.longitude
+                                    )
+                                )
+                                .zIndex(if (cluster.count > 1) 1f else 0f)
                         )
-                    )
+                    }
                 }
+
+
             }
 
             MapTopBar(onBackClick = onBackClick)
@@ -435,9 +461,9 @@ private fun ClusterPin(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MapSheet(state: PhotoMapState, viewModel: PhotoMapViewModel) {
+private fun MapSheet(state: PhotoMapState, viewModel: PhotoMapViewModel,scaffoldState: BottomSheetScaffoldState) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+    Column(Modifier.fillMaxWidth().fillMaxHeight(.75f).navigationBarsPadding()) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -478,33 +504,45 @@ private fun MapSheet(state: PhotoMapState, viewModel: PhotoMapViewModel) {
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.6f)
+                modifier = Modifier.fillMaxWidth().weight(1f)
             ) {
-                items(state.sheetPhotos, key = { it.mediaId }) { photo ->
-                    val request = remember(photo.uriString) {
+                items(state.sheetPhotos, key = { it.mediaId }) { media ->
+                    val request = remember(media.uriString) {
                         ImageRequest.Builder(context)
-                            .data(photo.uriString)
+                            .data(media.uriString)
                             .size(256)
-                            .memoryCacheKey(ThumbnailSizes.cacheKey(photo.uriString, 256))
+                            .memoryCacheKey(ThumbnailSizes.cacheKey(media.uriString, 256))
                             .setParameter("is_thumbnail", true)
                             .build()
                     }
-                    Image(
-                        painter = rememberAsyncImagePainter(
-                            request,
-                            contentScale = ContentScale.Crop
-                        ),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+
+                    Box(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
-                                viewModel.setEvent(PhotoMapEvent.PhotoClicked(photo.mediaId))
+                                viewModel.setEvent(PhotoMapEvent.PhotoClicked(media.mediaId))
                             }
-                    )
-                }
-            }
+                    ) {
+                        Image(
+                            painter = rememberAsyncImagePainter(request),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        if (media.isVideo) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayCircle,
+                                contentDescription = "Video",
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .size(36.dp)
+                            )
+                        }
+                    }
+                }            }
         }
     }
 }

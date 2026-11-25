@@ -3,6 +3,7 @@ package com.myurrrjj.chronicle.presentation.settings
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -53,8 +54,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -273,6 +276,9 @@ fun SettingsScreen(
                             )
                         }
                     }
+                    item(key = "legal_footer") { LegalFooter() }
+
+
                 }
             }
         }
@@ -458,4 +464,52 @@ private fun <T> SettingsSegmentedCard(item: SettingItem.SegmentedOptions<T>) {
             }
         }
     }
+}
+
+
+private const val PRIVACY_POLICY_URL = "https://myurrrjj.github.io/chronicle-privacy/"
+private const val DATA_DELETION_URL =
+    "https://myurrrjj.github.io/chronicle-privacy/data-deletion.html"
+
+@Suppress("DEPRECATION")
+@Composable
+private fun LegalFooter() {
+    val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val versionName = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            FooterLink("Privacy Policy") { uriHandler.openUri(PRIVACY_POLICY_URL) }
+            FooterLink("Delete my data") { uriHandler.openUri(DATA_DELETION_URL) }
+        }
+        Text(
+            text = if (versionName != null) "Chronicle · v$versionName" else "Chronicle",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun FooterLink(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
 }
