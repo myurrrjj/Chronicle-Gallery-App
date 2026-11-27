@@ -19,4 +19,7 @@ sealed interface Route {
 
     @Serializable
     data object PhotoMap : Route
+
+    @Serializable data object FaceLab : Route
+
 }

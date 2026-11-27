@@ -2,7 +2,6 @@ package com.myurrrjj.chronicle.presentation.navigation
 
 import android.Manifest
 import android.app.Activity
-import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.widget.Toast
@@ -41,6 +40,8 @@ import com.myurrrjj.chronicle.presentation.navigation.Route.Settings
 import com.myurrrjj.chronicle.presentation.search.SearchScreen
 import com.myurrrjj.chronicle.presentation.settings.SettingsScreen
 import com.myurrrjj.chronicle.trial.DirtyTestScreen
+import com.myurrrjj.chronicle.FaceSortingLabScreen
+import androidx.core.net.toUri
 
 @Suppress("EffectKeys")
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -91,7 +92,7 @@ fun GalleryNavGraph() {
                     MediaIntents.editMedia(context, effect.uriString, effect.mimeType)
 
                 is GalleryEffect.DeleteMedia -> {
-                    val uris = effect.uris.map { Uri.parse(it) }
+                    val uris = effect.uris.map { it.toUri() }
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                             val pendingIntent =
@@ -194,6 +195,10 @@ fun GalleryNavGraph() {
                     }
                 )
             }
+
+
+
+            composable<Route.FaceLab> { FaceSortingLabScreen() }
         }
     }
 }

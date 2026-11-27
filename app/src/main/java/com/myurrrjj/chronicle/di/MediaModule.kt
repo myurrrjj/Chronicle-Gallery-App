@@ -2,6 +2,8 @@ package com.myurrrjj.chronicle.di
 
 import android.content.ContentResolver
 import android.content.Context
+import com.myurrrjj.chronicle.core.util.FaceCropLocator
+import com.myurrrjj.chronicle.data.local.dao.FaceDao
 import com.myurrrjj.chronicle.data.local.dao.FavouriteDao
 import com.myurrrjj.chronicle.data.local.dao.LocationDao
 import com.myurrrjj.chronicle.data.repository.MediaStoreRepositoryImpl
@@ -27,10 +29,14 @@ object MediaModule {
     fun provideMediaRepository(
         contentResolver: ContentResolver,
         favouriteDao: FavouriteDao,
-        locationDao: LocationDao
+        locationDao: LocationDao,
+        faceDao: FaceDao,
+        faceCropLocator: FaceCropLocator
     ): MediaRepository = MediaStoreRepositoryImpl(
         contentResolver = contentResolver,
         favouriteDao = favouriteDao,
-        locationDao = locationDao
+        locationDao = locationDao,
+        faceDao = faceDao,
+        faceCropLocator = faceCropLocator
     )
 }

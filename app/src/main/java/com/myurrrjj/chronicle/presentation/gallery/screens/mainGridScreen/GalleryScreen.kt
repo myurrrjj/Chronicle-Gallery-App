@@ -149,7 +149,17 @@ fun GalleryScreen(
             AnimatedContent(
                 targetState = ScreenTarget(
                     interactionState.openedAlbum, interactionState.openedPersonCluster
-                ), transitionSpec = {
+                ),
+                contentKey = { target ->
+                    val person = target.person
+                    val album = target.album
+                    when {
+                        person != null -> "person_${person.id}"
+                        album != null -> "album_${album.name ?: "Unknown"}"
+                        else -> "gallery"
+                    }
+                },
+                transitionSpec = {
                     val isOpeningDetail = targetState.album != null || targetState.person != null
 
                     if (isOpeningDetail) {

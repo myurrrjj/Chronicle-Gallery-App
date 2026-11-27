@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,6 +49,7 @@ import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryState
 import com.myurrrjj.chronicle.presentation.gallery.model.GalleryTab
 import com.myurrrjj.chronicle.presentation.gallery.model.OthersSelection
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SharedTransitionScope.GalleryGridContent(
     state: GalleryState,
@@ -79,7 +82,7 @@ fun SharedTransitionScope.GalleryGridContent(
         ) { tab ->
             when {
                 configState.isLoading -> {
-                    CircularProgressIndicator(
+                    LoadingIndicator(
                         modifier = Modifier.align(Alignment.Center),
                         color = MaterialTheme.colorScheme.primary
                     )

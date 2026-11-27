@@ -45,8 +45,10 @@ import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.BottomSheetScaffoldState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -324,6 +326,7 @@ private fun MapTopBar(onBackClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun MapStatusBanner(
     phase: MapPhase,
@@ -362,9 +365,9 @@ private fun MapStatusBanner(
                 }
 
                 MapPhase.Indexing -> {
-                    CircularProgressIndicator(
+                    LoadingIndicator(
                         Modifier.size(14.dp),
-                        strokeWidth = 2.dp
+//                        strokeWidth = 2.dp
                     )
                     Text(
                         text = if (state.indexing.total > 0) {

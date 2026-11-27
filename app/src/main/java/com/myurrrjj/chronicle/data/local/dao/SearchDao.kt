@@ -16,4 +16,8 @@ interface SearchDao {
 
     @Query("DELETE FROM search_index")
     suspend fun clearIndex()
+
+    @Query("SELECT COUNT(*) FROM search_index")
+    suspend fun indexedCount(): Int
+
 }
