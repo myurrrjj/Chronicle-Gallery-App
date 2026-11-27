@@ -15,6 +15,8 @@ data class SearchState(
     val isIndexing : Boolean = true,
     val indexingProgress: Float = 0f,
     val currentViewMode: GalleryViewMode = GalleryViewMode.DAY,
+    val searchError: String? = null,
+    val indexingError: String? = null,
     val groupedResults: ImmutableMap<String, ImmutableList<MediaAsset>> = persistentMapOf()
 ) : ViewState
 
@@ -24,6 +26,7 @@ sealed class SearchEvent : ViewEvent {
     data class OnMediaClicked(val mediaId: Long) : SearchEvent()
     object OnBackClicked : SearchEvent()
     data class ChangeViewMode(val viewMode: GalleryViewMode) : SearchEvent()
+    object RetryIndexing : SearchEvent()
 }
 
 sealed class SearchEffect : ViewSideEffect {

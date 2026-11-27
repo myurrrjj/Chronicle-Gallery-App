@@ -1,5 +1,6 @@
 package com.myurrrjj.chronicle.presentation.search
 
+import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.myurrrjj.chronicle.core.presentation.mvi.BaseViewModel
 import com.myurrrjj.chronicle.domain.model.MediaAsset
@@ -12,10 +13,9 @@ import com.myurrrjj.chronicle.presentation.search.contract.SearchState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -39,15 +39,34 @@ class SearchViewModel @Inject constructor(
 
     private fun initializeSearchIndex() {
         viewModelScope.launch {
-            val media = mediaRepository.getAllMedia().first()
-            val favs = mediaRepository.getFavorites().first().map { it.id }.toSet()
-            cachedMediaList = media
-            searchRepository.syncSearchIndex(media, favs).collectLatest { progress ->
+            setState {
+                copy(
+                    isIndexing = true, indexingProgress = 0f, indexingError = null
+                )
+            }
+            try {
+                val media = mediaRepository.getAllMedia().first()
+                val favs = mediaRepository.getFavorites().first().map { it.id }.toSet()
+                cachedMediaList = media
+                searchRepository.syncSearchIndex(media, favs).collect { progress ->
+                    setState {
+                        copy(indexingProgress = progress)
+                    }
+                }
+
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("SearchViewModel", "Indexing failed", e)
+
                 setState {
                     copy(
-                        indexingProgress = progress,
-                        isIndexing = progress < 1f
+                        indexingError = "Couldn't prepare the search index."
                     )
+                }
+            } finally {
+                setState {
+                    copy(isIndexing = false)
                 }
             }
         }
@@ -58,52 +77,102 @@ class SearchViewModel @Inject constructor(
     override fun handleEvent(event: SearchEvent) {
         when (event) {
             is SearchEvent.OnQueryChanged -> {
-                setState { copy(query = event.query) }
+                setState { copy(query = event.query,searchError = null) }
                 searchQueryFlow.value = event.query
             }
+
             SearchEvent.ClearSearch -> {
-                setState { copy(query = "", groupedResults = persistentMapOf(), isSearching = false) }
+                setState {
+                    copy(
+                        query = "", groupedResults = persistentMapOf(), isSearching = false, searchError = null
+                    )
+                }
                 searchQueryFlow.value = ""
             }
+
             is SearchEvent.OnMediaClicked -> setEffect { SearchEffect.NavigateToDetail(event.mediaId) }
             SearchEvent.OnBackClicked -> setEffect { SearchEffect.NavigateBack }
             is SearchEvent.ChangeViewMode -> {
                 setState { copy(currentViewMode = event.viewMode) }
                 regroupResults()
             }
+
+            SearchEvent.RetryIndexing -> {
+                if (!uiState.value.isIndexing) {
+                    searchQueryFlow.value = ""
+
+                    setState {
+                        copy(
+                            query = "",
+                            groupedResults = persistentMapOf(),
+                            searchError = null,
+                            isSearching = false
+                        )
+                    }
+
+                    initializeSearchIndex()
+                }
+            }
         }
     }
 
     private fun observeSearchExecution() {
         viewModelScope.launch {
-            searchQueryFlow
-                .debounce(300L)
-                .distinctUntilChanged()
-                .collectLatest { query ->
-                    if (query.isBlank()) {
-                        setState { copy(groupedResults = persistentMapOf(), isSearching = false) }
-                        return@collectLatest
-                    }
+            searchQueryFlow.collectLatest { query ->
 
-                    setState { copy(isSearching = true) }
-
-                    val matchedMedia = try {
-                        val matchedIds = searchRepository.searchMediaIds(query).toSet()
-                        cachedMediaList.filter { it.id in matchedIds }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        emptyList()
-                    }
-
-                    val grouped = groupMediaUseCase(matchedMedia, uiState.value.currentViewMode)
+                if (query.isBlank()) {
                     setState {
                         copy(
-                            groupedResults = grouped,
-                            isSearching = false
+                            groupedResults = persistentMapOf(),
+                            isSearching = false,
+                            searchError = null
+                        )
+                    }
+                    return@collectLatest
+                }
+
+                delay(300L)
+
+                if (uiState.value.isIndexing || uiState.value.indexingError != null) {
+                    return@collectLatest
+                }
+
+                setState {
+                    copy(
+                        isSearching = true, searchError = null
+                    )
+                }
+
+                try {
+                    val matchedIds = searchRepository.searchMediaIds(query).toSet()
+
+                    val matchedMedia = cachedMediaList.filter {
+                        it.id in matchedIds
+                    }
+
+                    val grouped = groupMediaUseCase(
+                        matchedMedia, uiState.value.currentViewMode
+                    )
+
+                    setState {
+                        copy(
+                            groupedResults = grouped, isSearching = false
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("SearchViewModel", "Search failed", e)
+
+                    setState {
+                        copy(
+                            groupedResults = persistentMapOf(),
+                            isSearching = false,
+                            searchError = "Couldn't complete the search. Try again."
                         )
                     }
                 }
+            }
         }
     }
 

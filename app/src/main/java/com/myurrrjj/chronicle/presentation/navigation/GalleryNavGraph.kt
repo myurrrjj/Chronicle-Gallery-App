@@ -21,7 +21,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.hilt.navigation.compose.hiltViewModel
+//import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -42,6 +43,8 @@ import com.myurrrjj.chronicle.presentation.settings.SettingsScreen
 import com.myurrrjj.chronicle.trial.DirtyTestScreen
 import com.myurrrjj.chronicle.FaceSortingLabScreen
 import androidx.core.net.toUri
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.myurrrjj.chronicle.presentation.search.SearchViewModel
 
 @Suppress("EffectKeys")
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -170,7 +173,16 @@ fun GalleryNavGraph() {
                 exitTransition = { fadeOut(tween(300, delayMillis = 90)) },
                 popEnterTransition = { fadeIn(tween(300)) },
                 popExitTransition = { fadeOut(tween(300)) }
-            ) {
+            ) { backStackEntry ->
+
+                val galleryEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry<Gallery>()
+                }
+
+                val searchViewModel: SearchViewModel =
+                    androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel(galleryEntry)
+
+
                 SearchScreen(
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@composable,
@@ -182,7 +194,8 @@ fun GalleryNavGraph() {
                         sharedViewModel.clearDetailScope()
                         navController.navigate(Detail(mediaId))
                     },
-                    galleryViewModel = sharedViewModel
+                    galleryViewModel = sharedViewModel,
+                    viewModel = searchViewModel
                 )
             }
 

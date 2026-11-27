@@ -6,14 +6,12 @@ import androidx.room.Fts4
 import androidx.room.PrimaryKey
 
 
-@Fts4
+@Fts4(notIndexed = ["mediaId"])
 @Entity(tableName = "search_index")
 data class SearchIndexEntity(
     @PrimaryKey(autoGenerate = true)
     @ColumnInfo(name = "rowid")
     val rowId: Int = 0,
-
     val mediaId: Long,
-
     val terms: String
 )

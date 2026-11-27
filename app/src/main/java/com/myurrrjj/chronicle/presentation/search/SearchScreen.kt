@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,7 +49,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import kotlinx.collections.immutable.persistentSetOf
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,13 +58,14 @@ import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
 import com.myurrrjj.chronicle.presentation.search.contract.SearchEffect
 import com.myurrrjj.chronicle.presentation.search.contract.SearchEvent
 import com.myurrrjj.chronicle.presentation.search.contract.SearchState
+import kotlinx.collections.immutable.persistentSetOf
 
 @Composable
 fun SearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onNavigateToDetail: (Long) -> Unit,
     onNavigateBack: () -> Unit,
-    viewModel: SearchViewModel = hiltViewModel(),
+    viewModel: SearchViewModel,
     galleryViewModel: GalleryViewModel,
     sharedTransitionScope: SharedTransitionScope
 ) {
@@ -222,6 +223,38 @@ private fun ActiveSearchContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+
+                val error = state.indexingError ?: state.searchError
+
+                if (error != null) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        if (state.indexingError != null) {
+                            TextButton(
+                                onClick = {
+                                    onEvent(SearchEvent.RetryIndexing)
+                                }
+                            ) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
+
+
+
                 androidx.compose.animation.AnimatedVisibility(
                     visible = state.isSearching,
                     enter = fadeIn(),
@@ -230,6 +263,8 @@ private fun ActiveSearchContent(
                         .align(Alignment.TopCenter)
                         .padding(top = 32.dp)
                 ) {
+
+
                     CircularProgressIndicator(
                         modifier = Modifier.size(32.dp),
                         strokeWidth = 3.dp,
@@ -237,20 +272,22 @@ private fun ActiveSearchContent(
                     )
                 }
 
-                UniversalMediaGrid(
-                    groupedMedia = state.groupedResults,
-                    currentViewMode = state.currentViewMode,
-                    gridState = gridState,
-                    selectionMode = false,
-                    selectedMediaIds = persistentSetOf(),
-                    onMediaClick = { onEvent(SearchEvent.OnMediaClicked(it)) },
-                    onToggleSelection = { },
-                    onEnterSelectionMode = { },
-                    onViewModeChanged = { onEvent(SearchEvent.ChangeViewMode(it)) },
-                    sharedTransitionScope = sharedTransitionScope,
-                    tabAnimatedVisibilityScope = animatedVisibilityScope,
-                    albumAnimatedVisibilityScope = animatedVisibilityScope,
-                )
+                if (error==null){
+                    UniversalMediaGrid(
+                        groupedMedia = state.groupedResults,
+                        currentViewMode = state.currentViewMode,
+                        gridState = gridState,
+                        selectionMode = false,
+                        selectedMediaIds = persistentSetOf(),
+                        onMediaClick = { onEvent(SearchEvent.OnMediaClicked(it)) },
+                        onToggleSelection = { },
+                        onEnterSelectionMode = { },
+                        onViewModeChanged = { onEvent(SearchEvent.ChangeViewMode(it)) },
+                        sharedTransitionScope = sharedTransitionScope,
+                        tabAnimatedVisibilityScope = animatedVisibilityScope,
+                        albumAnimatedVisibilityScope = animatedVisibilityScope,
+                    )
+                }
             }
         }
     }

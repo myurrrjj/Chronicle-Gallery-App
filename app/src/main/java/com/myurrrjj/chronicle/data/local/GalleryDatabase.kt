@@ -17,6 +17,7 @@ import com.myurrrjj.chronicle.data.local.entity.MediaPersonEntity
 import com.myurrrjj.chronicle.data.local.entity.MediaProcessingStatusEntity
 import com.myurrrjj.chronicle.data.local.entity.PlaceCacheEntity
 import com.myurrrjj.chronicle.data.local.entity.SearchIndexEntity
+import com.myurrrjj.chronicle.data.local.entity.SearchIndexFingerprintEntity
 
 @Database(
     entities = [
@@ -27,13 +28,16 @@ import com.myurrrjj.chronicle.data.local.entity.SearchIndexEntity
         MediaProcessingStatusEntity::class,
         SearchIndexEntity::class,
         MediaLocationEntity::class,
-        PlaceCacheEntity::class
+        PlaceCacheEntity::class,
+        SearchIndexFingerprintEntity::class
     ],
-    version = 7,
+    version = 9,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 5, to = 6),
-        AutoMigration(from = 6, to = 7)
+        AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 8, to = 9)
     ]
 )
 abstract class GalleryDatabase : RoomDatabase() {

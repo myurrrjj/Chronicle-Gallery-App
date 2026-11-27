@@ -5,6 +5,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.myurrrjj.chronicle.data.local.entity.SearchIndexEntity
+import com.myurrrjj.chronicle.data.local.entity.SearchIndexFingerprintEntity
+import com.myurrrjj.chronicle.data.local.projection.SearchIndexRowRef
 
 @Dao
 interface SearchDao {
@@ -19,5 +21,25 @@ interface SearchDao {
 
     @Query("SELECT COUNT(*) FROM search_index")
     suspend fun indexedCount(): Int
+
+    @Query("SELECT * FROM search_index_fingerprints")
+    suspend fun getAllFingerprints(): List<SearchIndexFingerprintEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFingerprints(
+        fingerprints: List<SearchIndexFingerprintEntity>
+    )
+
+    @Query("DELETE FROM search_index_fingerprints WHERE mediaId IN (:mediaIds)")
+    suspend fun deleteFingerprintsByMediaIds(mediaIds: List<Long>)
+
+    @Query("SELECT rowid AS rowId, mediaId FROM search_index")
+    suspend fun getIndexRowRefs(): List<SearchIndexRowRef>
+
+    @Query("DELETE FROM search_index WHERE rowid IN (:rowIds)")
+    suspend fun deleteIndexRowsByRowIds(rowIds: List<Long>)
+
+    @Query("DELETE FROM search_index_fingerprints")
+    suspend fun clearFingerprints()
 
 }
