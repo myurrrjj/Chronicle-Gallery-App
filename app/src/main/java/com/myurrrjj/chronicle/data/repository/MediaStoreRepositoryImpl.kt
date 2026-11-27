@@ -7,12 +7,15 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
+import com.myurrrjj.chronicle.core.util.FaceCropLocator
+import com.myurrrjj.chronicle.data.local.dao.FaceDao
 import com.myurrrjj.chronicle.data.local.dao.FavouriteDao
 import com.myurrrjj.chronicle.data.local.dao.LocationDao
 import com.myurrrjj.chronicle.data.local.entity.toFavoriteEntity
 import com.myurrrjj.chronicle.domain.model.DetailedMediaInfo
 import com.myurrrjj.chronicle.domain.model.MediaAsset
 import com.myurrrjj.chronicle.domain.model.MediaDetailsBundle
+import com.myurrrjj.chronicle.domain.model.MediaFace
 import com.myurrrjj.chronicle.domain.model.MediaRef
 import com.myurrrjj.chronicle.domain.repository.MediaRepository
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +28,11 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class MediaStoreRepositoryImpl @Inject constructor(
-    private val contentResolver: ContentResolver, private val favouriteDao: FavouriteDao,    private val locationDao: LocationDao
+    private val contentResolver: ContentResolver,
+    private val favouriteDao: FavouriteDao,
+    private val locationDao: LocationDao,
+    private val faceDao: FaceDao,
+    private val faceCropLocator: FaceCropLocator
 
 ) : MediaRepository {
     override fun getAllMedia(): Flow<List<MediaAsset>> = flow {
@@ -246,45 +253,151 @@ class MediaStoreRepositoryImpl @Inject constructor(
         )
 
         val out = ArrayList<MediaRef>(2048)
-        contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
-            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_ADDED)
-            val volumeCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
-            } else -1
+        contentResolver.query(collection, projection, selection, selectionArgs, null)
+            ?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_ADDED)
+                val volumeCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                } else -1
 
-            while (cursor.moveToNext()) {
-                val mime = cursor.getString(mimeCol) ?: continue
-                val isVideo = mime.startsWith("video/")
-                val id = cursor.getLong(idCol)
+                while (cursor.moveToNext()) {
+                    val mime = cursor.getString(mimeCol) ?: continue
+                    val isVideo = mime.startsWith("video/")
+                    val id = cursor.getLong(idCol)
 
-                val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val volume = cursor.getString(volumeCol) ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
-                    if (isVideo) MediaStore.Video.Media.getContentUri(volume)
-                    else MediaStore.Images.Media.getContentUri(volume)
-                } else if (isVideo) {
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                } else {
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val volume =
+                            cursor.getString(volumeCol) ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
+                        if (isVideo) MediaStore.Video.Media.getContentUri(volume)
+                        else MediaStore.Images.Media.getContentUri(volume)
+                    } else if (isVideo) {
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    } else {
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    }
+
+                    out += MediaRef(
+                        id = id,
+                        uriString = ContentUris.withAppendedId(base, id).toString(),
+                        isVideo = isVideo,
+                        dateAddedSec = cursor.getLong(dateCol)
+                    )
                 }
-
-                out += MediaRef(
-                    id = id,
-                    uriString = ContentUris.withAppendedId(base, id).toString(),
-                    isVideo = isVideo,
-                    dateAddedSec = cursor.getLong(dateCol)
-                )
             }
-        }
         out
     }
+
     override suspend fun getMediaDetailsBundle(
         mediaId: Long, uriString: String, isVideo: Boolean
-    ): MediaDetailsBundle = MediaDetailsBundle(
-        details = getMediaDetails(uriString, isVideo),
-        location = locationDao.getLocationFor(mediaId)
-    )
+    ): MediaDetailsBundle = withContext(Dispatchers.IO) {
+        val faceRows = if (isVideo) {
+            emptyList()
+        } else {
+            runCatching { faceDao.getFacesForMedia(mediaId) }.getOrDefault(emptyList())
+        }
+        val facesIndexed = if (isVideo) {
+            false
+        } else {
+            runCatching { faceDao.isMediaProcessed(mediaId) }.getOrDefault(false)
+        }
+
+        MediaDetailsBundle(
+            details = getMediaDetails(uriString, isVideo),
+            location = locationDao.getLocationFor(mediaId),
+            faces = faceRows.map { row ->
+                MediaFace(
+                    embeddingId = row.embeddingId,
+                    faceIndex = row.faceIndex,
+                    clusterId = row.clusterId,
+                    personLabel = row.personLabel,
+                    cropFile = faceCropLocator.existingCropFile(
+                        mediaId = mediaId,
+                        faceIndex = row.faceIndex,
+                        embeddingId = row.embeddingId
+                    )
+                )
+            },
+            facesIndexed = facesIndexed,
+            storagePath = resolveStoragePath(uriString)
+        )
+    }
+
+
+    private fun resolveStoragePath(uriString: String): String? {
+        val uri = uriString.toUri()
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val projection = arrayOf(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.VOLUME_NAME
+                )
+                contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    val relCol = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                    val nameCol = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val volCol = cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+
+                    val name = if (nameCol != -1) cursor.getString(nameCol) else null
+                    if (name.isNullOrBlank()) return@use null
+
+                    val relative = if (relCol != -1) cursor.getString(relCol) else null
+                    val volume = if (volCol != -1) cursor.getString(volCol) else null
+                    val root = if (volume == null || volume == MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+                        "Internal storage"
+                    } else {
+                        "SD card"
+                    }
+                    joinPath(root, relative, name)
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val projection = arrayOf(MediaStore.MediaColumns.DATA)
+                contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    @Suppress("DEPRECATION")
+                    val dataCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                    val absolute = if (dataCol != -1) cursor.getString(dataCol) else null
+                    if (absolute.isNullOrBlank()) null else fromAbsolutePath(absolute)
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun joinPath(root: String, relativePath: String?, name: String): String {
+        val segments = ArrayList<String>(6)
+        segments.add(root)
+        relativePath?.split('/')?.forEach { if (it.isNotBlank()) segments.add(it) }
+        segments.add(name)
+        return segments.joinToString(" / ")
+    }
+
+    private fun fromAbsolutePath(absolute: String): String {
+        val normalised = absolute.replace('\\', '/')
+
+        PRIMARY_STORAGE_REGEX.find(normalised)?.let { match ->
+            return tidyPath("Internal storage / ${match.groupValues[1]}")
+        }
+
+        REMOVABLE_STORAGE_REGEX.find(normalised)?.let { match ->
+            return tidyPath("SD card / ${match.groupValues[2]}")
+        }
+
+        return normalised
+    }
+
+    private fun tidyPath(path: String): String =
+        path.split('/').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" / ")
+
+    companion object {
+        private val PRIMARY_STORAGE_REGEX = Regex("^/storage/emulated/\\d+/(.*)$")
+        private val REMOVABLE_STORAGE_REGEX = Regex("^/storage/([^/]+)/(.*)$")
+    }
+
 
 
 }

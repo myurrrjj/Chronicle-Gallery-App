@@ -324,8 +324,11 @@ class FaceIndexingWorker @AssistedInject constructor(
     private suspend fun processSingleMedia(
         media: MediaAsset
     ): List<Pair<FaceEmbeddingEntity, Bitmap>> {
-        val bitmap = BitmapLoader.loadBitmap(contentResolver, media.uriString) ?: return emptyList()
-
+        val bitmap = BitmapLoader.loadBitmap(
+            contentResolver = contentResolver,
+            uriString = media.uriString,
+            maxDimension = 1600
+        ) ?: return emptyList()
         return try {
             val faces = faceDetector.detectFaces(bitmap)
             val results = mutableListOf<Pair<FaceEmbeddingEntity, Bitmap>>()

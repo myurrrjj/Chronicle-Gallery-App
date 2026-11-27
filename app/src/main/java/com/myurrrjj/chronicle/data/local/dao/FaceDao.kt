@@ -9,6 +9,7 @@ import com.myurrrjj.chronicle.data.local.entity.FaceClusterEntity
 import com.myurrrjj.chronicle.data.local.entity.FaceEmbeddingEntity
 import com.myurrrjj.chronicle.data.local.entity.MediaPersonEntity
 import com.myurrrjj.chronicle.data.local.entity.MediaProcessingStatusEntity
+import com.myurrrjj.chronicle.data.local.projection.MediaFaceRow
 import com.myurrrjj.chronicle.data.local.projection.PersonClusterSummary
 import kotlinx.coroutines.flow.Flow
 
@@ -212,4 +213,29 @@ interface FaceDao {
 
     @Query("DELETE FROM face_clusters")
     suspend fun deleteAllClusters()
+
+
+    @Query(
+        """
+        SELECT e.embeddingId AS embeddingId,
+               e.faceIndex AS faceIndex,
+               fc.clusterId AS clusterId,
+               fc.personLabel AS personLabel
+        FROM face_embeddings e
+        LEFT JOIN face_clusters fc ON fc.clusterId = (
+            SELECT mp.clusterId
+            FROM media_person mp
+            WHERE mp.embeddingId = e.embeddingId
+            ORDER BY mp.id DESC
+            LIMIT 1
+        )
+        WHERE e.mediaId = :mediaId
+        ORDER BY e.faceIndex ASC, e.embeddingId ASC
+        """
+    )
+    suspend fun getFacesForMedia(mediaId: Long): List<MediaFaceRow>
+
+
+    @Query("SELECT EXISTS(SELECT 1 FROM media_processing_status WHERE mediaId = :mediaId)")
+    suspend fun isMediaProcessed(mediaId: Long): Boolean
 }
