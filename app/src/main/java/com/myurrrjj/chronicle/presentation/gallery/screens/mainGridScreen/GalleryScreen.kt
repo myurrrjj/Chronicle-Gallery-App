@@ -129,11 +129,11 @@ fun GalleryScreen(
         }, animationSpec = tween(200)
     )
 
-    LaunchedEffect(Unit) {
-        if (contentState.masterMediaList.isEmpty()) {
-            viewModel.setEvent(GalleryEvent.LoadMedia)
-        }
-    }
+//    LaunchedEffect(Unit) {
+//        if (contentState.masterMediaList.isEmpty()) {
+//            viewModel.setEvent(GalleryEvent.LoadMedia)
+//        }
+//    }
 
     val onEvent = remember(viewModel){viewModel::setEvent}
 

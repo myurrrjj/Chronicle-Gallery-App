@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.myurrrjj.chronicle.core.indexing.FaceIndexingController
 import com.myurrrjj.chronicle.core.indexing.LocationIndexingController
+import com.myurrrjj.chronicle.core.indexing.SearchIndexingController
 import com.myurrrjj.chronicle.core.presentation.mvi.BaseViewModel
 import com.myurrrjj.chronicle.domain.model.GalleryViewMode
 import com.myurrrjj.chronicle.domain.model.MediaAsset
@@ -25,19 +26,29 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.PersistentSet
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentSet
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
@@ -48,7 +59,8 @@ class GalleryViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val groupMediaUseCase: GroupMediaUseCase,
     private val getFilteredMediaUseCase: GetFilteredMediaUseCase,
-    private val locationIndexingController: LocationIndexingController
+    private val locationIndexingController: LocationIndexingController,
+    private val searchIndexingController: SearchIndexingController
 ) : BaseViewModel<GalleryEvent, GalleryState, GalleryEffect>() {
     private var isFirstSettingsLoad = true
     private var autoStartChecked = false
@@ -56,6 +68,9 @@ class GalleryViewModel @Inject constructor(
     private var regroupJob: Job? = null
     private var prefetchJob: Job? = null
 
+    private var mediaObserverJob: Job? = null
+    private val manualMediaRefresh = Channel<Unit>(Channel.CONFLATED)
+    private var hasLoadedMedia = false
 
     init {
         observeFavorites()
@@ -339,10 +354,10 @@ class GalleryViewModel @Inject constructor(
     private fun observeFaceIndexing() {
         viewModelScope.launch {
             faceIndexingController.progress.distinctUntilChanged { old, new ->
-                    old.status == new.status && old.processed == new.processed && old.total == new.total && old.facesFound == new.facesFound && old.message == new.message
-                }.collect { progress ->
-                    setState { copy(faceIndexing = progress) }
-                }
+                old.status == new.status && old.processed == new.processed && old.total == new.total && old.facesFound == new.facesFound && old.message == new.message
+            }.collect { progress ->
+                setState { copy(faceIndexing = progress) }
+            }
         }
     }
 
@@ -379,20 +394,20 @@ class GalleryViewModel @Inject constructor(
     private fun updatePersonName(clusterId: Long, newName: String) {
         viewModelScope.launch {
             runCatching { faceRepository.updateClusterName(clusterId, newName) }.onSuccess {
-                    setState {
-                        val opened = interactionState.openedPersonCluster
-                        copy(
-                            interactionState = if (opened?.id == clusterId) {
-                                interactionState.copy(openedPersonCluster = opened.copy(name = newName))
+                setState {
+                    val opened = interactionState.openedPersonCluster
+                    copy(
+                        interactionState = if (opened?.id == clusterId) {
+                            interactionState.copy(openedPersonCluster = opened.copy(name = newName))
 
-                            } else {
-                                interactionState
-                            }, prefetchedMediaId = null, prefetchedBundle = null
-                        )
-                    }
-                }.onFailure { error ->
-                    Log.e("GalleryViewModel", "Rename failed for cluster $clusterId", error)
+                        } else {
+                            interactionState
+                        }, prefetchedMediaId = null, prefetchedBundle = null
+                    )
                 }
+            }.onFailure { error ->
+                Log.e("GalleryViewModel", "Rename failed for cluster $clusterId", error)
+            }
         }
     }
 
@@ -530,9 +545,7 @@ class GalleryViewModel @Inject constructor(
                             )
                         } else {
                             infoSheetState
-                        },
-                        prefetchedMediaId = media.id,
-                        prefetchedBundle = b
+                        }, prefetchedMediaId = media.id, prefetchedBundle = b
                     )
                 }
             }.onFailure { e ->
@@ -540,7 +553,11 @@ class GalleryViewModel @Inject constructor(
                     val stillLoadingThisMedia =
                         (infoSheetState as? InfoSheetState.Loading)?.media?.id == media.id
                     if (stillLoadingThisMedia) {
-                        copy(infoSheetState = InfoSheetState.Error(media, e.message ?: "Unknown Error"))
+                        copy(
+                            infoSheetState = InfoSheetState.Error(
+                                media, e.message ?: "Unknown Error"
+                            )
+                        )
                     } else {
                         this
                     }
@@ -548,6 +565,7 @@ class GalleryViewModel @Inject constructor(
             }
         }
     }
+
     fun openScopedDetail(scopeIds: List<Long>) {
         setState {
             copy(
@@ -588,110 +606,206 @@ class GalleryViewModel @Inject constructor(
     }
 
     private fun handlePermission(isGranted: Boolean) {
-        setState { copy(configState = configState.copy(hasPermission = isGranted)) }
+        val hadPermission =
+            uiState.value.configState.hasPermission
+
         if (isGranted) {
-            fetchMedia()
-            locationIndexingController.enqueue()
-            locationIndexingController.ensurePeriodicRefresh()
-        } else setState {
-            copy(
-                configState = configState.copy(
-                    isLoading = false, error = "Permission required to display media."
+            setState {
+                copy(
+                    configState = configState.copy(
+                        hasPermission = true,
+                        error = null
+                    )
                 )
-            )
+            }
+
+            fetchMedia()
+
+            if (!hadPermission) {
+                locationIndexingController.enqueue()
+                locationIndexingController.ensurePeriodicRefresh()
+
+                viewModelScope.launch {
+                    try {
+                        searchIndexingController.ensurePeriodicRefresh()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(
+                            "GalleryViewModel",
+                            "Couldn't schedule periodic search indexing",
+                            e
+                        )
+                    }
+                }
+            }
+        } else {
+            mediaObserverJob?.cancel()
+            mediaObserverJob = null
+
+            manualMediaRefresh.tryReceive()
+
+            hasLoadedMedia = false
+
+            setState {
+                copy(
+                    configState = configState.copy(
+                        hasPermission = false,
+                        isLoading = false,
+                        error = "Permission required to display media."
+                    ),
+                    contentState = contentState.copy(
+                        masterMediaList = persistentListOf(),
+                        displayedMediaList = persistentListOf(),
+                        favouriteMediaList = persistentListOf(),
+                        favoriteMediaIds = persistentSetOf(),
+                        groupedMedia = persistentMapOf(),
+                        albums = persistentListOf()
+                    )
+                )
+            }
         }
     }
-
+    @OptIn(FlowPreview::class)
     private fun fetchMedia() {
         if (!uiState.value.configState.hasPermission) {
             setEffect { GalleryEffect.RequestPermission }
             return
         }
 
-        viewModelScope.launch {
-            mediaRepository.getAllMedia().onStart {
-                setState {
-                    copy(
-                        configState = configState.copy(
-                            isLoading = true, error = null
-                        )
-                    )
-                }
-            }.catch { exception ->
-                setState {
-                    copy(
-                        configState = configState.copy(
-                            isLoading = false, error = exception.message
-                        )
-                    )
-                }
-            }.collect { media ->
-                val stateSnapshot = uiState.value
-                val (immutableMedia, processedAlbums, newDisplayedList, initialGrouped) = withContext(
-                    Dispatchers.Default
-                ) {
-                    val immMedia = media.toImmutableList()
-                    val albums =
-                        immMedia.groupBy { it.folderName ?: "Unknown" }.map { (folderName, items) ->
-                                Album(
-                                    name = folderName,
-                                    mediaCount = items.size,
-                                    coverMedia = items.first()
-                                )
-                            }.sortedBy { it.name }.toImmutableList()
+        if (mediaObserverJob?.isActive == true) {
+            manualMediaRefresh.trySend(Unit)
+            return
+        }
 
-                    val displayed = when {
-                        stateSnapshot.interactionState.openedAlbum != null -> {
-                            immMedia.filter {
-                                (it.folderName
-                                    ?: "Unknown") == stateSnapshot.interactionState.openedAlbum.name
-                            }.toImmutableList()
-                        }
-
-                        stateSnapshot.interactionState.openedPersonCluster != null -> {
-                            stateSnapshot.contentState.displayedMediaList
-                        }
-
-                        else -> when (stateSnapshot.interactionState.selectedTab) {
-                            GalleryTab.ALL -> immMedia
-                            GalleryTab.VIDEOS -> immMedia.filter { it.isVideo }.toImmutableList()
-                            GalleryTab.ALBUMS -> persistentListOf()
-                            GalleryTab.OTHERS -> {
-                                if (stateSnapshot.interactionState.othersSelection == OthersSelection.FAVOURITES) {
-                                    stateSnapshot.contentState.favouriteMediaList
-                                } else {
-                                    persistentListOf()
-                                }
-                            }
-                        }
-                    }
-
-                    val grouped = groupMediaUseCase(
-                        displayed, stateSnapshot.configState.currentViewMode
-                    )
-                    Quadruple(immMedia, albums, displayed, grouped)
-                }
-
-                setState {
-                    copy(
-                        configState = configState.copy(isLoading = false),
-                        contentState = contentState.copy(
-                            masterMediaList = immutableMedia,
-                            displayedMediaList = newDisplayedList,
-                            groupedMedia = initialGrouped,
-                            albums = processedAlbums
-                        )
-                    )
-                }
-
-                if (!autoStartChecked) {
-                    autoStartChecked = true
-                    faceIndexingController.autoStartIfNeeded()
-                }
+        mediaObserverJob = viewModelScope.launch {
+            merge(
+                mediaRepository.observeMediaChanges().debounce(500L),
+                manualMediaRefresh.receiveAsFlow()
+            ).conflate().collect {
+                refreshMedia()
             }
         }
     }
 
+
+    private suspend fun refreshMedia() {
+        if (!uiState.value.configState.hasPermission) return
+
+        setState {
+            copy(
+                configState = configState.copy(
+                    isLoading = !hasLoadedMedia, error = null
+                )
+            )
+        }
+
+        try {
+            val media = mediaRepository.getAllMedia().first()
+
+            val stateSnapshot = uiState.value
+
+            val (immutableMedia, processedAlbums, newDisplayedList, initialGrouped) = withContext(
+                Dispatchers.Default
+            ) {
+
+                val immMedia = media.toImmutableList()
+
+                val albums =
+                    immMedia.groupBy { it.folderName ?: "Unknown" }.map { (folderName, items) ->
+                            Album(
+                                name = folderName,
+                                mediaCount = items.size,
+                                coverMedia = items.first()
+                            )
+                        }.sortedBy { it.name }.toImmutableList()
+
+                val displayed = when {
+                    stateSnapshot.interactionState.openedAlbum != null -> {
+                        immMedia.filter {
+                            (it.folderName
+                                ?: "Unknown") == stateSnapshot.interactionState.openedAlbum.name
+                        }.toImmutableList()
+                    }
+
+                    stateSnapshot.interactionState.openedPersonCluster != null -> {
+                        stateSnapshot.contentState.displayedMediaList
+                    }
+
+                    else -> when (stateSnapshot.interactionState.selectedTab) {
+                        GalleryTab.ALL -> immMedia
+
+                        GalleryTab.VIDEOS -> immMedia.filter { it.isVideo }.toImmutableList()
+
+                        GalleryTab.ALBUMS -> persistentListOf()
+
+                        GalleryTab.OTHERS -> {
+                            if (stateSnapshot.interactionState.othersSelection == OthersSelection.FAVOURITES) {
+                                val favouriteIds = stateSnapshot.contentState.favoriteMediaIds
+
+                                immMedia.filter {
+                                    it.id in favouriteIds
+                                }.toImmutableList()
+                            } else {
+                                persistentListOf()
+                            }
+                        }
+                    }
+                }
+
+                val grouped = groupMediaUseCase(
+                    displayed, stateSnapshot.configState.currentViewMode
+                )
+
+                Quadruple(immMedia, albums, displayed, grouped)
+            }
+
+            hasLoadedMedia = true
+
+            setState {
+                copy(
+                    configState = configState.copy(
+                        isLoading = false, error = null
+                    ), contentState = contentState.copy(
+                        masterMediaList = immutableMedia,
+                        displayedMediaList = newDisplayedList,
+                        groupedMedia = initialGrouped,
+                        albums = processedAlbums
+                    )
+                )
+            }
+
+            requestSearchIndexing()
+
+            if (!autoStartChecked) {
+                autoStartChecked = true
+                faceIndexingController.autoStartIfNeeded()
+            }
+
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("GalleryViewModel", "Media refresh failed", e)
+
+            setState {
+                copy(
+                    configState = configState.copy(
+                        isLoading = false, error = "Couldn't refresh the media library."
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun requestSearchIndexing() {
+        try {
+            searchIndexingController.enqueue()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("GalleryViewModel", "Couldn't schedule search indexing", e)
+        }
+    }
 
     private fun navigateToDetail(mediaId: Long) {
 
@@ -708,28 +822,51 @@ class GalleryViewModel @Inject constructor(
 
     private fun observeFavorites() {
         viewModelScope.launch {
-            mediaRepository.getFavorites().collect { favourites ->
+            combine(
+                mediaRepository.getFavorites().map { favourites ->
+                    favourites.map { it.id }.toSet()
+                }.distinctUntilChanged().onEach {
+                    if (uiState.value.configState.hasPermission) {
+                        requestSearchIndexing()
+                    }
+                },
+                uiState.map { it.contentState.masterMediaList }
+                    .distinctUntilChanged()) { favouriteIds, media ->
+                media.filter { it.id in favouriteIds }
+            }.collect { favourites ->
+
                 val stateSnapshot = uiState.value
+
                 val isViewingFavourites =
                     stateSnapshot.interactionState.openedAlbum == null && stateSnapshot.interactionState.openedPersonCluster == null && stateSnapshot.interactionState.selectedTab == GalleryTab.OTHERS && stateSnapshot.interactionState.othersSelection == OthersSelection.FAVOURITES
 
                 val (immutableFavourites, ids, groupedFavs) = withContext(Dispatchers.Default) {
                     val immFavs = favourites.toImmutableList()
+
                     val favIds = favourites.map { it.id }.toImmutableSet()
+
                     val grouped = if (isViewingFavourites) {
-                        groupMediaUseCase(immFavs, stateSnapshot.configState.currentViewMode)
+                        groupMediaUseCase(
+                            immFavs, stateSnapshot.configState.currentViewMode
+                        )
                     } else {
                         null
                     }
+
                     Triple(immFavs, favIds, grouped)
                 }
 
                 setState {
+                    if (!configState.hasPermission) return@setState this
                     copy(
                         contentState = contentState.copy(
                             favouriteMediaList = immutableFavourites,
                             favoriteMediaIds = ids,
-                            displayedMediaList = if (isViewingFavourites) immutableFavourites else contentState.displayedMediaList,
+                            displayedMediaList = if (isViewingFavourites) {
+                                immutableFavourites
+                            } else {
+                                contentState.displayedMediaList
+                            },
                             groupedMedia = groupedFavs ?: contentState.groupedMedia
                         )
                     )

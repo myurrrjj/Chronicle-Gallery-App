@@ -1,5 +1,6 @@
 package com.myurrrjj.chronicle.presentation.navigation
 
+//import androidx.hilt.navigation.compose.hiltViewModel
 import android.Manifest
 import android.app.Activity
 import android.os.Build
@@ -21,13 +22,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-//import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.myurrrjj.chronicle.FaceSortingLabScreen
 import com.myurrrjj.chronicle.core.util.MediaIntents
+import com.myurrrjj.chronicle.core.util.hasFullMediaAccess
 import com.myurrrjj.chronicle.presentation.gallery.GalleryViewModel
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEffect
 import com.myurrrjj.chronicle.presentation.gallery.contract.GalleryEvent
@@ -39,12 +44,9 @@ import com.myurrrjj.chronicle.presentation.navigation.Route.DirtyTest
 import com.myurrrjj.chronicle.presentation.navigation.Route.Gallery
 import com.myurrrjj.chronicle.presentation.navigation.Route.Settings
 import com.myurrrjj.chronicle.presentation.search.SearchScreen
+import com.myurrrjj.chronicle.presentation.search.SearchViewModel
 import com.myurrrjj.chronicle.presentation.settings.SettingsScreen
 import com.myurrrjj.chronicle.trial.DirtyTestScreen
-import com.myurrrjj.chronicle.FaceSortingLabScreen
-import androidx.core.net.toUri
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.myurrrjj.chronicle.presentation.search.SearchViewModel
 
 @Suppress("EffectKeys")
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -53,19 +55,53 @@ fun GalleryNavGraph() {
     val navController = rememberNavController()
     val context = LocalContext.current
     val sharedViewModel: GalleryViewModel = hiltViewModel()
-
     val permissionToRequest = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-        } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                )
+
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO
+                )
+
+            else ->
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                )
         }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permission ->
-        sharedViewModel.setEvent(GalleryEvent.PermissionResult(permission.values.all { it }))
+    ) {
+        sharedViewModel.setEvent(
+            GalleryEvent.PermissionResult(
+                hasFullMediaAccess(context)
+            )
+        )
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val granted = hasFullMediaAccess(context)
+
+        if (
+            !granted &&
+            sharedViewModel.uiState.value.configState.hasPermission
+        ) {
+            navController.popBackStack<Gallery>(
+                inclusive = false
+            )
+        }
+
+        sharedViewModel.setEvent(
+            GalleryEvent.PermissionResult(granted)
+        )
     }
 
     val deleteLauncher = rememberLauncherForActivityResult(
@@ -175,14 +211,9 @@ fun GalleryNavGraph() {
                 popExitTransition = { fadeOut(tween(300)) }
             ) { backStackEntry ->
 
-                val galleryEntry = remember(backStackEntry) {
-                    navController.getBackStackEntry<Gallery>()
-                }
 
                 val searchViewModel: SearchViewModel =
-                    androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel(galleryEntry)
-
-
+                    hiltViewModel()
                 SearchScreen(
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@composable,

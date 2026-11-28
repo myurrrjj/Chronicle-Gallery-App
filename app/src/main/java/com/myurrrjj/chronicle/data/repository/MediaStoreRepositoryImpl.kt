@@ -2,12 +2,18 @@ package com.myurrrjj.chronicle.data.repository
 
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.content.Context
+import android.database.ContentObserver
 import android.media.MediaMetadataRetriever
 import android.os.Build
+import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.myurrrjj.chronicle.core.util.FaceCropLocator
+import com.myurrrjj.chronicle.core.util.MediaVolumeStamp
+import com.myurrrjj.chronicle.core.util.hasFullMediaAccess
+import com.myurrrjj.chronicle.core.util.readMediaStoreStamp
 import com.myurrrjj.chronicle.data.local.dao.FaceDao
 import com.myurrrjj.chronicle.data.local.dao.FavouriteDao
 import com.myurrrjj.chronicle.data.local.dao.LocationDao
@@ -18,12 +24,18 @@ import com.myurrrjj.chronicle.domain.model.MediaDetailsBundle
 import com.myurrrjj.chronicle.domain.model.MediaFace
 import com.myurrrjj.chronicle.domain.model.MediaRef
 import com.myurrrjj.chronicle.domain.repository.MediaRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -32,10 +44,66 @@ class MediaStoreRepositoryImpl @Inject constructor(
     private val favouriteDao: FavouriteDao,
     private val locationDao: LocationDao,
     private val faceDao: FaceDao,
-    private val faceCropLocator: FaceCropLocator
-
+    private val faceCropLocator: FaceCropLocator,
+    @ApplicationContext private val appContext: Context,
 ) : MediaRepository {
-    override fun getAllMedia(): Flow<List<MediaAsset>> = flow {
+
+    private data class CachedMedia(
+        val stamp: List<MediaVolumeStamp>, val media: List<MediaAsset>, val createdAt: Long
+    )
+
+    private val mediaSnapshotMutex = Mutex()
+
+    private var cachedMedia: CachedMedia? = null
+
+    private val cacheMaxAgeMs = 5 * 60 * 1000L
+
+    override fun getAllMedia(
+        forceRefresh: Boolean
+    ): Flow<List<MediaAsset>> = flow {
+
+        val media = mediaSnapshotMutex.withLock {
+
+            if (!hasFullMediaAccess(appContext)) {
+                cachedMedia = null
+                throw SecurityException("Full media access required")
+            }
+
+            val stampBefore = readMediaStoreStamp(appContext)
+
+            val existing = cachedMedia
+
+            if (!forceRefresh && stampBefore != null && existing != null && existing.stamp == stampBefore && SystemClock.elapsedRealtime() - existing.createdAt < cacheMaxAgeMs) {
+                return@withLock existing.media
+            }
+
+            cachedMedia = null
+
+            val freshMedia = queryAllMedia().first()
+
+            if (!hasFullMediaAccess(appContext)) {
+                throw SecurityException("Media access was revoked")
+            }
+
+            val stampAfter = readMediaStoreStamp(appContext)
+
+            if (stampBefore != null && stampBefore == stampAfter) {
+                cachedMedia = CachedMedia(
+                    stamp = stampBefore,
+                    media = freshMedia,
+                    createdAt = SystemClock.elapsedRealtime()
+                )
+            }
+
+            freshMedia
+        }
+
+        emit(media)
+
+    }.flowOn(Dispatchers.IO)
+
+
+    private fun queryAllMedia(): Flow<List<MediaAsset>> = flow {
         val mediaList = mutableListOf<MediaAsset>()
         val collection = MediaStore.Files.getContentUri("external")
         val projection = arrayOf(
@@ -58,64 +126,65 @@ class MediaStoreRepositoryImpl @Inject constructor(
 
         val sortOrder = "${MediaStore.Files.FileColumns.DATE_ADDED} DESC"
 
-        contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
-            ?.use { cursor ->
-                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-                val nameColumn =
-                    cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-                val dateAddedColumn =
-                    cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_ADDED)
-                val mimeTypeColumn =
-                    cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
-                val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-                val widthColumn = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
-                val heightColumn = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
-                val durationColumn = cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
-                val bucketColumn =
-                    cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idColumn)
-                    val name = cursor.getString(nameColumn) ?: ""
-                    val dateAdded = cursor.getLong(dateAddedColumn)
-                    val mimeType = cursor.getString(mimeTypeColumn) ?: ""
-                    val size = cursor.getLong(sizeColumn)
+        val cursor = contentResolver.query(
+            collection, projection, selection, selectionArgs, sortOrder
+        ) ?: throw IllegalStateException("MediaStore query returned no cursor")
 
-                    val width = if (widthColumn != -1 && !cursor.isNull(widthColumn)) cursor.getInt(
-                        widthColumn
+        cursor.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+            val dateAddedColumn =
+                cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_ADDED)
+            val mimeTypeColumn =
+                cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+            val widthColumn = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
+            val heightColumn = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
+            val durationColumn = cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
+            val bucketColumn =
+                cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val name = cursor.getString(nameColumn) ?: ""
+                val dateAdded = cursor.getLong(dateAddedColumn)
+                val mimeType = cursor.getString(mimeTypeColumn) ?: ""
+                val size = cursor.getLong(sizeColumn)
+
+                val width = if (widthColumn != -1 && !cursor.isNull(widthColumn)) cursor.getInt(
+                    widthColumn
+                ) else null
+                val height = if (heightColumn != -1 && !cursor.isNull(heightColumn)) cursor.getInt(
+                    heightColumn
+                ) else null
+                val folderName = cursor.getString(bucketColumn) ?: "Unknown"
+                val duration =
+                    if (durationColumn != -1 && !cursor.isNull(durationColumn)) cursor.getLong(
+                        durationColumn
                     ) else null
-                    val height =
-                        if (heightColumn != -1 && !cursor.isNull(heightColumn)) cursor.getInt(
-                            heightColumn
-                        ) else null
-                    val folderName = cursor.getString(bucketColumn) ?: "Unknown"
-                    val duration =
-                        if (durationColumn != -1 && !cursor.isNull(durationColumn)) cursor.getLong(
-                            durationColumn
-                        ) else null
 
-                    val contentUri = ContentUris.withAppendedId(
-                        if (mimeType.startsWith("image/")) MediaStore.Images.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                        id
+                val contentUri = ContentUris.withAppendedId(
+                    if (mimeType.startsWith("image/")) MediaStore.Images.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    id
+
+                )
+                mediaList.add(
+                    MediaAsset(
+                        id = id,
+                        uriString = contentUri.toString(),
+                        name = name,
+                        dateAdded = dateAdded,
+                        mimeType = mimeType,
+                        size = size,
+                        width = width,
+                        height = height,
+                        duration = duration,
+                        folderName = folderName
 
                     )
-                    mediaList.add(
-                        MediaAsset(
-                            id = id,
-                            uriString = contentUri.toString(),
-                            name = name,
-                            dateAdded = dateAdded,
-                            mimeType = mimeType,
-                            size = size,
-                            width = width,
-                            height = height,
-                            duration = duration,
-                            folderName = folderName
-
-                        )
-                    )
-                }
-
+                )
             }
+
+        }
 
         val masterIds = mediaList.map { it.id }.toSet()
         val currentFavs = favouriteDao.getFavourites().first()
@@ -126,6 +195,24 @@ class MediaStoreRepositoryImpl @Inject constructor(
         }
         emit(mediaList)
     }.flowOn(Dispatchers.IO)
+
+    override fun observeMediaChanges(): Flow<Unit> = callbackFlow {
+        val observer = object : ContentObserver(null) {
+            override fun onChange(selfChange: Boolean) {
+                trySend(Unit)
+            }
+
+        }
+        contentResolver.registerContentObserver(
+            "content://${MediaStore.AUTHORITY}".toUri(), true, observer
+
+        )
+        trySend(Unit)
+        awaitClose {
+            contentResolver.unregisterContentObserver(observer)
+
+        }
+    }.conflate().flowOn(Dispatchers.IO)
 
     override fun getFavorites(): Flow<List<MediaAsset>> {
         return favouriteDao.getFavourites().map { entities ->
@@ -297,11 +384,7 @@ class MediaStoreRepositoryImpl @Inject constructor(
         } else {
             runCatching { faceDao.getFacesForMedia(mediaId) }.getOrDefault(emptyList())
         }
-        val facesIndexed = if (isVideo) {
-            false
-        } else {
-            runCatching { faceDao.isMediaProcessed(mediaId) }.getOrDefault(false)
-        }
+        val facesIndexed = !isVideo && runCatching { faceDao.isMediaProcessed(mediaId) }.getOrDefault(false)
 
         MediaDetailsBundle(
             details = getMediaDetails(uriString, isVideo),
@@ -313,9 +396,7 @@ class MediaStoreRepositoryImpl @Inject constructor(
                     clusterId = row.clusterId,
                     personLabel = row.personLabel,
                     cropFile = faceCropLocator.existingCropFile(
-                        mediaId = mediaId,
-                        faceIndex = row.faceIndex,
-                        embeddingId = row.embeddingId
+                        mediaId = mediaId, faceIndex = row.faceIndex, embeddingId = row.embeddingId
                     )
                 )
             },
@@ -353,12 +434,11 @@ class MediaStoreRepositoryImpl @Inject constructor(
                     joinPath(root, relative, name)
                 }
             } else {
-                @Suppress("DEPRECATION")
-                val projection = arrayOf(MediaStore.MediaColumns.DATA)
+                @Suppress("DEPRECATION") val projection = arrayOf(MediaStore.MediaColumns.DATA)
                 contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
                     if (!cursor.moveToFirst()) return@use null
-                    @Suppress("DEPRECATION")
-                    val dataCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                    @Suppress("DEPRECATION") val dataCol =
+                        cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
                     val absolute = if (dataCol != -1) cursor.getString(dataCol) else null
                     if (absolute.isNullOrBlank()) null else fromAbsolutePath(absolute)
                 }
@@ -397,7 +477,6 @@ class MediaStoreRepositoryImpl @Inject constructor(
         private val PRIMARY_STORAGE_REGEX = Regex("^/storage/emulated/\\d+/(.*)$")
         private val REMOVABLE_STORAGE_REGEX = Regex("^/storage/([^/]+)/(.*)$")
     }
-
 
 
 }

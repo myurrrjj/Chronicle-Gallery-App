@@ -21,18 +21,21 @@ object MediaModule {
 
     @Provides
     @Singleton
-    fun provideContentResolver(@ApplicationContext context: Context): ContentResolver =
-        context.contentResolver
+    fun provideContentResolver(
+        @ApplicationContext context: Context
+    ): ContentResolver = context.contentResolver
 
     @Provides
     @Singleton
     fun provideMediaRepository(
+        @ApplicationContext context: Context,
         contentResolver: ContentResolver,
         favouriteDao: FavouriteDao,
         locationDao: LocationDao,
         faceDao: FaceDao,
         faceCropLocator: FaceCropLocator
     ): MediaRepository = MediaStoreRepositoryImpl(
+        appContext = context,
         contentResolver = contentResolver,
         favouriteDao = favouriteDao,
         locationDao = locationDao,

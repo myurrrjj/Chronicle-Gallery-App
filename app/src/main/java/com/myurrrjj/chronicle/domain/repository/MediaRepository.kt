@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 interface MediaRepository {
-    fun getAllMedia(): Flow<List<MediaAsset>>
-
+    fun getAllMedia(
+        forceRefresh: Boolean = false
+    ): Flow<List<MediaAsset>>
+    fun observeMediaChanges(): Flow<Unit>
     fun getFavorites(): Flow<List<MediaAsset>>
 
     suspend fun toggleFavourite(media: MediaAsset, isFavourite: Boolean)

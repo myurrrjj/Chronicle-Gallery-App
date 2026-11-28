@@ -12,7 +12,7 @@ import kotlinx.collections.immutable.persistentMapOf
 data class SearchState(
     val query: String = "",
     val isSearching: Boolean = false,
-    val isIndexing : Boolean = true,
+    val isIndexing : Boolean = false,
     val indexingProgress: Float = 0f,
     val currentViewMode: GalleryViewMode = GalleryViewMode.DAY,
     val searchError: String? = null,

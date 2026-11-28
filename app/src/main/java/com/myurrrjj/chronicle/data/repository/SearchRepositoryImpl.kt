@@ -6,6 +6,7 @@ import com.myurrrjj.chronicle.data.local.dao.SearchDao
 import com.myurrrjj.chronicle.data.local.entity.SearchIndexEntity
 import com.myurrrjj.chronicle.data.local.entity.SearchIndexFingerprintEntity
 import com.myurrrjj.chronicle.domain.model.MediaAsset
+import com.myurrrjj.chronicle.domain.repository.SEARCH_INDEX_FORMAT_VERSION
 import com.myurrrjj.chronicle.domain.repository.SearchRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -13,6 +14,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -149,13 +151,19 @@ class SearchRepositoryImpl @Inject constructor(
         if (matchQuery.isBlank()) emptyList() else searchDao.searchMediaIds(matchQuery)
     }
 
+    override fun observeIndexChanges(): Flow<Unit> {
+        return database.invalidationTracker
+            .createFlow("search_index_fingerprints")
+            .map { Unit }
+    }
+
 
     private fun mediaFingerprint(
         media: MediaAsset, isFavourite: Boolean, zoneId: ZoneId, locale: Locale
     ): Long {
         var hash = FNV_OFFSET_BASIS
 
-        hash = hash.mix(INDEX_FORMAT_VERSION.toLong())
+        hash = hash.mix(SEARCH_INDEX_FORMAT_VERSION.toLong())
         hash = hash.mix(zoneId.id)
         hash = hash.mix(locale.toLanguageTag())
 
@@ -171,31 +179,37 @@ class SearchRepositoryImpl @Inject constructor(
 
 
     private fun MediaAsset.toIndexRow(
-        favouriteIds: Set<Long>, dateFormatter: DateTimeFormatter, zoneId: ZoneId
+        favouriteIds: Set<Long>,
+        dateFormatter: DateTimeFormatter,
+        zoneId: ZoneId
     ): SearchIndexEntity {
 
         val date = Instant.ofEpochSecond(dateAdded)
             .atZone(zoneId)
             .toLocalDate()
 
-        val searchableTerms = buildString {
-            append(name).append(' ')
+        val searchableTerms = buildList {
+            add(name)
+            add(folderName ?: UNKNOWN_FOLDER)
 
-            append(folderName ?: UNKNOWN_FOLDER)
-                .append(' ')
+            if (isVideo) {
+                add("video mp4 videos")
+            } else {
+                add("photo image images photos")
+            }
 
-            if (isVideo) append("video mp4 videos") else append("photo image images photos")
+            if (id in favouriteIds) {
+                add("favorite favorites favourites favourite")
+            }
 
-            if (id in favouriteIds) append("favorite favorites favourites favourite")
+            add(date.format(dateFormatter))
+            add(date.toSearchDateToken())
+        }.joinToString(" ").lowercase(Locale.ROOT)
 
-            append(date.format(dateFormatter))
-            append(' ')
-            append(date.toSearchDateToken())
-
-
-        }
-
-        return SearchIndexEntity(mediaId = id, terms = searchableTerms.lowercase())
+        return SearchIndexEntity(
+            mediaId = id,
+            terms = searchableTerms
+        )
     }
     private fun buildPrefixMatchQuery(raw: String): String {
         val tokens = mutableListOf<String>()
@@ -208,7 +222,7 @@ class SearchRepositoryImpl @Inject constructor(
 
                 tokens.add(date.toSearchDateToken())
             } else {
-                tokens.add("${token}*")
+                tokens.add("\"${token}*\"")
             }
         }
 
@@ -260,7 +274,7 @@ class SearchRepositoryImpl @Inject constructor(
     }
 
     private companion object {
-        const val INDEX_FORMAT_VERSION = 3
+        const val INDEX_FORMAT_VERSION = 4
 
         const val DATE_PATTERN = "MMMM yyyy d"
         const val CHUNK_SIZE = 500
